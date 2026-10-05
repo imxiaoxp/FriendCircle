@@ -34,9 +34,19 @@ $this->need('header.php');
 <?php endif; ?>
 
 <div class="fc-list" id="fc-list">
-    <?php while ($this->next()): ?>
-        <?php fcMomentHtml($this); ?>
-    <?php endwhile; ?>
+    <?php
+    // 第一遍：收集本页 cid，批量预取点赞数 / 评论数据（3 条分组查询替代每卡片 3 条）
+    // Widget::next() 耗尽时会复位 stack 指针，第二遍循环可直接重新迭代
+    $fcCids = array();
+    while ($this->next()) {
+        $fcCids[] = (int) $this->cid;
+    }
+    fcPrefetchSocialData($fcCids);
+    // 第二遍：正常渲染
+    while ($this->next()) {
+        fcMomentHtml($this);
+    }
+    ?>
 </div>
 
 <?php if (!$this->have()): ?>

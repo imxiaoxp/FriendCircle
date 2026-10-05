@@ -3,12 +3,12 @@
 /**
  * 点赞 AJAX 接口
  *
- * POST /usr/themes/FriendCircle/action/like.php
+ * POST /usr/themes/FriendCircle/like.php
  * Body: cid=<文章ID>&cancel=<0|1>（cancel=1 为取消点赞）
  * Response: {"count": 数字}
  */
 
-$config = dirname(dirname(dirname(dirname(__DIR__)))) . '/config.inc.php';
+$config = dirname(dirname(dirname(__DIR__))) . '/config.inc.php';
 if (!file_exists($config)) {
     http_response_code(500);
     exit(json_encode(['error' => 'Config not found']));

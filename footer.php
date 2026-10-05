@@ -1,6 +1,6 @@
 </main>
 </div>
-<?php /* 访问统计（移植自 WeiBo-X，悬浮模式） */
+<?php /* 访问统计 */
 if (($this->options->fcCounterEnabled ?? '0') == '1' && ($this->options->fcCounterPosition ?: 'bottom-right') !== '') {
     echo renderCounterBar(fcOption($this->options, 'fcCounterPosition', 'bottom-right'));
 } ?>
@@ -77,7 +77,7 @@ if (($this->options->fcCounterEnabled ?? '0') == '1' && ($this->options->fcCount
         <button class="fc-search-close" type="button" aria-label="关闭">&times;</button>
     </form>
 </div>
-<script src="<?php $this->options->themeUrl('assets/app.js'); ?>?v=<?php echo filemtime(__DIR__ . '/assets/app.js'); ?>"></script>
+<script src="<?php $this->options->themeUrl('app.js'); ?>?v=<?php echo filemtime(__DIR__ . '/app.js'); ?>"></script>
 <?php $this->footer(); ?>
 </body>
 </html>

@@ -61,21 +61,24 @@
 
 ## 目录结构
 
+主题文件平铺在根目录，可在 Typecho 后台「控制台 → 外观 → 编辑」中直接编辑。
+
 ```
 FriendCircle/
-├── functions.php        # 主题设置、动态渲染、评论渲染、访问统计等服务端逻辑
+├── functions.php        # 主题设置、动态渲染、社交数据缓存、访问统计等服务端逻辑
+├── comments.php         # 评论渲染与查询函数集（由 functions.php 加载）
+├── comments-ajax.php    # 评论 AJAX 接口（列表片段 / 提交）
+├── like.php             # 点赞 AJAX 接口
 ├── index.php            # 首页 / 归档页（搜索、分类、标签、作者）动态列表
 ├── post.php             # 详情页
 ├── page.php             # 独立页面
 ├── header.php           # 页头（暗色初始化、Prism CDN、顶栏）
 ├── footer.php           # 页尾（悬浮按钮组、友链 / 搜索弹窗、统计条、脚本）
-├── assets/
-│   ├── style.css        # 全部样式（含暗色模式与插件适配）
-│   ├── app.js           # 前端交互（评论 / 点赞 / 加载 / 弹窗 / 统计等）
-│   └── OwO.json         # OwO 表情码表
-└── action/
-    ├── comments.php     # 评论提交接口
-    └── like.php         # 点赞接口
+├── style.css            # 全部样式（含暗色模式与插件适配）
+├── app.js               # 前端交互（评论 / 点赞 / 加载 / 弹窗 / 统计等）
+├── OwO.json             # OwO 表情码表
+└── assets/
+    └── img/             # 主题默认图片（封面、默认头像）
 ```
 
 ## 许可证

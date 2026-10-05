@@ -29,9 +29,9 @@
             } catch (e) {}
         })();
     </script>
-    <link rel="stylesheet" href="<?php $this->options->themeUrl('assets/style.css'); ?>?v=<?php echo filemtime(__DIR__ . '/assets/style.css'); ?>">
+    <link rel="stylesheet" href="<?php $this->options->themeUrl('style.css'); ?>?v=<?php echo filemtime(__DIR__ . '/style.css'); ?>">
     <?php if (!empty($GLOBALS['fcPrism'])): ?>
-        <!-- Prism 代码高亮（CDN：核心 + 自动加载语言 + 行号 + 工具栏复制，参照 WeiBo-X） -->
+        <!-- Prism 代码高亮（CDN：核心 + 自动加载语言 + 行号 + 工具栏复制） -->
         <link rel="stylesheet" href="https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css">
         <script src="https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
         <script src="https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>

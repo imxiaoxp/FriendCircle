@@ -3,6 +3,8 @@
 /**
  * 首页内联评论接口
  *
+ * POST /usr/themes/FriendCircle/comments-ajax.php
+ *
  * GET  ?cid=<文章ID>&permalink=<路由路径>
  *      返回评论列表片段：{"list": "<html>"}
  * POST cid=<文章ID>&permalink=<路由路径>&type=comment&_=token
@@ -14,7 +16,7 @@
  * 通过 Response 沙箱拦截其成功后的 302 重定向，改为返回 JSON。
  */
 
-$config = dirname(dirname(dirname(dirname(__DIR__)))) . '/config.inc.php';
+$config = dirname(dirname(dirname(__DIR__))) . '/config.inc.php';
 if (!file_exists($config)) {
     http_response_code(500);
     exit(json_encode(['error' => 'Config not found']));
@@ -23,7 +25,7 @@ require_once $config;
 
 header('Content-Type: application/json; charset=UTF-8');
 
-require_once __DIR__ . '/../functions.php';
+require_once __DIR__ . '/functions.php';
 
 $db = \Typecho\Db::get();
 $isPost = ('POST' === ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
@@ -45,7 +47,7 @@ $themeUrlPart = ('' !== $rootFs && 0 === strpos($dirFs, $rootFs))
     ? substr($dirFs, strlen($rootFs))
     : '';
 $scriptName = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
-$scriptTail = '' !== $themeUrlPart ? $themeUrlPart . '/comments.php' : '';
+$scriptTail = '' !== $themeUrlPart ? $themeUrlPart . '/comments-ajax.php' : '';
 $siteBase = ('' !== $scriptTail && '' !== $scriptName
     && strlen($scriptName) > strlen($scriptTail)
     && substr($scriptName, -strlen($scriptTail)) === $scriptTail)

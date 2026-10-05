@@ -668,10 +668,11 @@ button {
     color: var(--texths);
 }
 
-.fc-inline-fields {
+/* 多行输入框：头像顶部对齐（微信式），按钮与默认评论框等高居中 */
+.fc-inline-row {
     display: flex;
     gap: 6px;
-    margin-bottom: 6px;
+    align-items: center;
 }
 
 .fc-inline-input {
@@ -685,10 +686,6 @@ button {
     line-height: 1.4;
 }
 
-.fc-inline-fields .fc-inline-input {
-    flex: 1;
-}
-
 .fc-inline-input::placeholder {
     color: var(--texths);
 }
@@ -700,11 +697,6 @@ textarea.fc-inline-input {
     min-height: 34px;
     max-height: 140px;
     transition: height .1s ease;
-}
-
-/* 多行输入框：头像顶部对齐（微信式），按钮与默认评论框等高居中 */
-.fc-inline-row {
-    align-items: center;
 }
 
 .fc-inline-row .fc-inline-avatar {
@@ -724,11 +716,6 @@ textarea.fc-inline-input {
     font-size: 13px;
     padding: 8px 0;
     cursor: default;
-}
-
-.fc-inline-row {
-    display: flex;
-    gap: 6px;
 }
 
 .fc-inline-row .fc-inline-input {
@@ -1236,7 +1223,7 @@ html.lightbox-open body {
 }
 
 /* ============ 背景音乐播放器 ============ */
-/* 容器底色参照 whitespace 主题 .music-control：半透明胶囊，亮暗各自适配 */
+/* 半透明胶囊底色，亮暗各自适配 */
 .fc-music {
     display: flex;
     align-items: center;
@@ -1309,7 +1296,7 @@ html.lightbox-open body {
     white-space: nowrap;
 }
 
-/* 歌名溢出时 hover 跑马灯滚动显示完整名称（参照网站滚动效果） */
+/* 歌名溢出时 hover 跑马灯滚动显示完整名称 */
 .fc-music-name.fc-overflow:hover {
     text-overflow: clip;
 }
@@ -1962,7 +1949,7 @@ pre[class*=language-].line-numbers {
     text-shadow: -1px -1px 0 var(--cobg);
 }
 
-/* ============ 访问统计条（移植自 WeiBo-X） ============ */
+/* ============ 访问统计条 ============ */
 .fc-vc-bar {
     --fc-vc-dh: 18px;
     display: inline-flex;

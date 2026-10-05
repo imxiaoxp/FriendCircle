@@ -19,26 +19,24 @@
         });
     }
 
-    /* ============ 顶栏滚动变色 ============ */
+    /* ============ 滚动联动：顶栏变色 + 返回顶部按钮显隐 ============ */
     var topbar = document.getElementById('fc-topbar');
     var cover = document.querySelector('.fc-header');
-    if (topbar && cover) {
+    var backtop = document.getElementById('fc-backtop');
+    if (topbar || backtop) {
         var onScroll = function () {
-            var threshold = cover.offsetHeight - 52;
-            topbar.classList.toggle('solid', window.scrollY > threshold);
+            if (topbar && cover) {
+                topbar.classList.toggle('solid', window.scrollY > cover.offsetHeight - 52);
+            }
+            if (backtop) {
+                backtop.hidden = window.scrollY <= 300;
+            }
         };
         window.addEventListener('scroll', onScroll, { passive: true });
         onScroll();
     }
 
-    /* ============ 返回顶部 ============ */
-    var backtop = document.getElementById('fc-backtop');
     if (backtop) {
-        var fcBacktopSync = function () {
-            backtop.hidden = window.scrollY <= 300;
-        };
-        window.addEventListener('scroll', fcBacktopSync, { passive: true });
-        fcBacktopSync();
         backtop.addEventListener('click', function () {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
@@ -124,7 +122,7 @@
     /* ============ 全文按钮 ============ */
     // 「全文」为跳转详情页的链接，这里仅在内容不超限时隐藏按钮
 
-    function bindFoldButtons() {
+    function fcSyncFulltextButtons() {
         document.querySelectorAll('.fc-card').forEach(function (item) {
             var text = item.querySelector('.fc-text.fc-fold');
             var toggle = item.querySelector('.fc-fulltext');
@@ -255,7 +253,7 @@
         zanp.hidden = !hasContent;
     }
 
-    /* 展开评论容器时若列表为空，显示占位提示（独立 div，式样同 WeiBo-X 空评论区） */
+    /* 展开评论容器时若列表为空，显示占位提示 */
     function fcEnsureEmptyHint(card) {
         var list = card && card.querySelector('.fc-inline-list');
         if (!list || list.children.length) return;
@@ -395,8 +393,8 @@
         fcScrollToZanp(card);
     });
 
-    /* 提交内联评论：仅点击「发送」按钮触发（参照 WeiBo-X，不监听 form submit，
-       回车在 textarea 内自然换行，单行输入框也不会误提交） */
+    /* 提交内联评论：仅点击「发送」按钮触发，不监听 form submit，
+       回车在 textarea 内自然换行，单行输入框也不会误提交 */
     document.addEventListener('click', function (e) {
         var send = e.target.closest('.fc-inline-send');
         if (!send) return;
@@ -787,7 +785,7 @@
         });
     }
 
-    /* ============ 访问统计条（移植自 WeiBo-X：数字滚动 + 可选轮询） ============ */
+    /* ============ 访问统计条（数字滚动 + 可选轮询） ============ */
     (function initCounter() {
         var bar = document.getElementById('fc-vc-counter');
         if (!bar) return;
@@ -1076,7 +1074,7 @@
                         loadmore.removeAttribute('data-next');
                         loadmore.textContent = '没有更多了';
                     }
-                    bindFoldButtons();
+                    fcSyncFulltextButtons();
 
                     // 重初始化新卡片内的播放器（VideoCollector/APlayer 插件注入的全局函数，未启用时跳过）
                     if (typeof window.initVideoCollectors === 'function') window.initVideoCollectors();
@@ -1112,7 +1110,7 @@
         loadmore.addEventListener('click', fcLoadNext);
     }
 
-    bindFoldButtons();
+    fcSyncFulltextButtons();
 
     /* ============ Prism：未标注语言的代码块自动识别语言 ============ */
     // Prism 本身无语言检测；autoloader 只按需加载已标注语言。
