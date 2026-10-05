@@ -134,6 +134,12 @@
 
     /* ============ 点赞（可取消） ============ */
     var likeBusy = false;
+
+    /* 点赞按钮文字随状态：已赞显示「取消」 */
+    function fcSyncLikeText(btn) {
+        var pill = btn.querySelector('.pill-text');
+        if (pill) pill.textContent = btn.classList.contains('liked') ? '取消' : '赞';
+    }
     document.addEventListener('click', function (e) {
         var btn = e.target.closest('.like-btn');
         if (!btn || likeBusy) return;
@@ -165,9 +171,13 @@
                 }
             } catch (err) {}
 
+            // 点赞/取消成功统一 toast 提示
+            fcInlineMsg(null, liked ? '已取消点赞' : '点赞成功');
+
             var item = btn.closest('.fc-card');
             if (!item) return;
             btn.classList.toggle('liked', !liked);
+            fcSyncLikeText(btn);
 
             var block = item.querySelector('.fc-likes');
             var count = item.querySelector('.like-count');
@@ -191,6 +201,7 @@
         if (likedCid) {
             document.querySelectorAll('.like-btn[data-cid="' + likedCid + '"]').forEach(function (btn) {
                 btn.classList.add('liked');
+                fcSyncLikeText(btn);
             });
         }
     })();

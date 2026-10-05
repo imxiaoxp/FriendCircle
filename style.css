@@ -520,8 +520,8 @@ button {
 }
 
 .like-btn.liked svg {
-    fill: var(--theme);
-    stroke: var(--theme);
+    fill: var(--protext);
+    stroke: var(--protext);
 }
 
 /* 两个点按钮（点击展开/收起赞、评论按钮） */
