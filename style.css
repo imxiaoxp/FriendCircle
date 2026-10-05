@@ -739,14 +739,29 @@ textarea.fc-inline-input {
     cursor: default;
 }
 
-.fc-inline-msg {
-    margin: 6px 0 0;
+/* 页面中部 toast 提示（评论成功 / 失败等，渐显渐隐，亮暗通用黑底白字） */
+.fc-toast {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1200;
+    max-width: 70vw;
+    padding: 12px 24px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, .75);
+    color: #fff;
     font-size: 14px;
-    color: var(--texths);
+    line-height: 1.5;
+    text-align: center;
+    word-break: break-all;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .3s ease;
 }
 
-.fc-inline-msg-error {
-    color: #e64340;
+.fc-toast.show {
+    opacity: 1;
 }
 
 /* 评论者头像（登录或已填评论者信息时显示在输入框左侧） */
@@ -1055,6 +1070,49 @@ textarea.fc-inline-input {
     border-bottom: none;
     margin-bottom: 0;
     margin-top: 12px;
+}
+
+/* ============ 正文排版 ============ */
+/* 全局 reset 清掉了块级元素默认间距，按需恢复（首页卡片 / 详情页 / 独立页通用） */
+.fc-text p {
+    margin: 8px 0;
+}
+
+.fc-text h1,
+.fc-text h2,
+.fc-text h3,
+.fc-text h4,
+.fc-text h5,
+.fc-text h6 {
+    margin: 14px 0 8px;
+    line-height: 1.4;
+}
+
+.fc-text ul,
+.fc-text ol {
+    margin: 8px 0;
+    padding-left: 22px;
+}
+
+.fc-text blockquote {
+    margin: 8px 0;
+}
+
+.fc-text hr {
+    margin: 14px 0;
+    border: none;
+    border-top: 1px solid var(--fgxys);
+}
+
+.fc-text table {
+    margin: 8px 0;
+    border-collapse: collapse;
+}
+
+.fc-text th,
+.fc-text td {
+    border: 1px solid var(--fgxys);
+    padding: 4px 8px;
 }
 
 /* ============ 独立页 ============ */

@@ -276,7 +276,6 @@ function fcInlineCommentForm($archive, $options, $listAll = false)
     $html .= '<button type="button" class="fc-inline-send">' . _t('发送') . '</button>';
     $html .= '</div>';
     $html .= '<div class="owo-box" hidden></div>';
-    $html .= '<p class="fc-inline-msg" hidden></p>';
     $html .= '</form>';
 
     return $html;

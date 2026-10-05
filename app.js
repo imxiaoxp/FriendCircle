@@ -197,12 +197,33 @@
 
     /* ============ 内联评论 ============ */
 
+    /* 页面中部 toast 提示（渐显渐隐）：text 为空时立即隐藏 */
+    var fcToastEl = null;
+
     function fcInlineMsg(form, text, isError) {
-        var msg = form.querySelector('.fc-inline-msg');
-        if (!msg) return;
-        msg.hidden = !text;
-        msg.textContent = text;
-        msg.classList.toggle('fc-inline-msg-error', !!isError);
+        if (fcToastEl && fcToastEl._hideTimer) {
+            clearTimeout(fcToastEl._hideTimer);
+            fcToastEl._hideTimer = null;
+        }
+        if (!text) return;
+        if (!fcToastEl) {
+            fcToastEl = document.createElement('div');
+            fcToastEl.className = 'fc-toast';
+            document.body.appendChild(fcToastEl);
+        }
+        fcToastEl.classList.toggle('fc-toast-error', !!isError);
+        fcToastEl.textContent = text;
+        fcToastEl.hidden = false;
+        // 强制回流保证连续调用时过渡动画重新触发
+        void fcToastEl.offsetWidth;
+        fcToastEl.classList.add('show');
+        fcToastEl._hideTimer = setTimeout(function () {
+            fcToastEl.classList.remove('show');
+            fcToastEl._hideTimer = setTimeout(function () {
+                fcToastEl.hidden = true;
+                fcToastEl._hideTimer = null;
+            }, 300);
+        }, isError ? 3000 : 2500);
     }
 
     function fcRemembered() {
