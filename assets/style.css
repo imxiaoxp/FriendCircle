@@ -661,9 +661,10 @@ button {
     display: none;
 }
 
-.fc-inline-identity {
+/* 回复提示条：回复某条评论时显示在输入行上方 */
+.fc-reply-bar {
     margin: 0 0 6px;
-    font-size: 14px;
+    font-size: 13px;
     color: var(--texths);
 }
 

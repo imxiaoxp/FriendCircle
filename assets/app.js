@@ -294,8 +294,17 @@
         container.hidden = true;
         var parentInput = container.querySelector('[name="parent"]');
         if (parentInput) parentInput.value = '';
+        fcShowReplyBar(container, '');
         // 表单从评论条目间移回列表下方默认位置
         fcResetFormPosition(container);
+    }
+
+    /* 回复提示条：回复某条评论时在输入行上方显示「回复 xx」 */
+    function fcShowReplyBar(container, author) {
+        var bar = container && container.querySelector('.fc-reply-bar');
+        if (!bar) return;
+        bar.textContent = author ? '回复 ' + author : '';
+        bar.hidden = !author;
     }
 
     /* 评论按钮：展开/收起评论容器（首页内联表单 / 详情页评论窗口） */
@@ -372,6 +381,8 @@
 
         container.hidden = false;
         parentInput.value = coid;
+        // 显示「回复 xx」提示条
+        fcShowReplyBar(container, li.getAttribute('data-author'));
         // 表单移到该条评论下方
         li.parentElement.insertBefore(container, li.nextSibling);
         var text = container.querySelector('[name="text"]');
@@ -472,6 +483,10 @@
                 return;
             }
             var item = form.closest('.fc-card');
+            // 提交成功后回到独立评论状态：清空 parent 与回复提示条
+            var parentInput = form.querySelector('[name="parent"]');
+            if (parentInput) parentInput.value = '';
+            fcShowReplyBar(form, '');
             // 表单若嵌在评论条目下方，先复位，避免被下方列表整体替换时一并销毁
             fcResetFormPosition(form);
             var list = item && item.querySelector('.fc-inline-list');

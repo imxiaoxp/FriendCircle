@@ -778,10 +778,10 @@ function fcInlineCommentForm($archive, $options, $listAll = false)
     $html .= '<input type="hidden" name="_" value="' . $token . '">';
     $html .= '<input type="hidden" name="parent" value="">';
 
-    if ($hasLogin) {
-        $html .= '<p class="fc-inline-identity">' . _t('以') . ' <span class="fc-comment-name">'
-            . htmlspecialchars((string) $user->screenName, ENT_QUOTES, 'UTF-8') . '</span> ' . _t('身份评论') . '</p>';
-    } else {
+    // 回复提示条：点击某条评论回复时由前端填充「回复 xx」（不区分登录/游客）
+    $html .= '<p class="fc-reply-bar" hidden></p>';
+
+    if (!$hasLogin) {
         // 游客身份字段不展示：提交时信息不全由前端弹窗补充后回填
         $html .= '<input type="hidden" name="author" value="' . htmlspecialchars($guestAuthor, ENT_QUOTES, 'UTF-8') . '">';
         $html .= '<input type="hidden" name="mail" value="' . htmlspecialchars($guestMail, ENT_QUOTES, 'UTF-8') . '">';
