@@ -1940,12 +1940,10 @@ pre[class*=language-].line-numbers {
     background: rgba(255, 255, 255, .25);
 }
 
-[data-theme="dark"] .aplayer .aplayer-lrc:before {
-    background: linear-gradient(180deg, var(--cobg) 0, rgba(30, 30, 30, 0));
-}
-
-[data-theme="dark"] .aplayer .aplayer-lrc:after {
-    background: linear-gradient(180deg, rgba(30, 30, 30, 0) 0, rgba(30, 30, 30, .8));
+/* 暗色下移除 APlayer 歌词区上下渐变阴影伪元素 */
+[data-theme="dark"] .aplayer .aplayer-lrc::before,
+[data-theme="dark"] .aplayer .aplayer-lrc::after {
+    content: none;
 }
 
 [data-theme="dark"] .aplayer .aplayer-lrc p {
