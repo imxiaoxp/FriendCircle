@@ -1,3 +1,5 @@
+![FriendCircle](./screenshot.png)
+
 # FriendCircle
 
 一款仿微信朋友圈风格的 Typecho 主题：时间线式动态列表 + 九宫格图片 + 内联点赞评论，界面简洁，交互还原朋友圈手感。
@@ -29,6 +31,11 @@
 2. 登录 Typecho 后台 → 控制台 → 外观
 3. 启用「FriendCircle」主题
 4. 进入主题设置按需配置（封面、头像、昵称、背景音乐、友情链接、访问统计等）
+
+## 推荐插件
+
+- **[VideoCollector](https://github.com/imxiaoxp/VideoCollector)**：视频采集插件——在 Typecho 后台从苹果 CMS 标准采集 API 搜索影视资源，一键生成 `[play]` 短代码嵌入多分集视频播放器（ArtPlayer / Iframe 双播放模式）；即使不使用采集功能，也可以用短代码插入视频。主题已适配：首页卡片提取第一个播放器（去除分集按钮）直接播放，详情页按原生 Typecho 渲染完整播放器。
+- **[APlayer-Typecho](https://github.com/MoePlayer/APlayer-Typecho)**：音乐播放插件——通过编辑器音乐按钮或 `[Meting]` 短代码插入网易云 / QQ 音乐等平台的单曲、专辑、歌单（下载后需将插件文件夹改名为 `Meting`）。主题已适配：文章插入音乐后，首页卡片与详情页直接展示 APlayer 播放器，AJAX 加载新卡片自动初始化，完整支持主题暗色模式。
 
 ## 后台设置说明
 
