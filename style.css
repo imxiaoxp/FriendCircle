@@ -286,7 +286,13 @@ button {
     border-bottom: 1px solid var(--fgxys);
 }
 
-/* 左侧头像 */
+/* 左侧头像（含详情页悬浮返回按钮的 sticky 列容器） */
+/* 宽度由内部头像的 margin 自然撑开（25 + 46 + 10 = 81px），固定宽度会挤占正文列 */
+.fc-card-side {
+    flex-shrink: 0;
+    align-self: stretch;
+}
+
 .fc-card-avatar {
     width: 46px;
     height: 46px;
@@ -310,6 +316,39 @@ button {
     height: 46px;
     border-radius: 4px;
     object-fit: cover;
+}
+
+/* 详情页悬浮返回按钮：返回条滚出视口后 sticky 吸顶显示，滚回原位隐藏 */
+.fc-back-float {
+    position: sticky;
+    top: 62px;
+    width: 40px;
+    height: 40px;
+    margin-top: 10px;
+    margin-left: 25px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: var(--cobg);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .12);
+    color: var(--textqh);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity .25s ease, visibility .25s ease;
+    z-index: 20;
+}
+
+.fc-back-float.visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.fc-back-float svg {
+    width: 18px;
+    height: 18px;
 }
 
 /* 右侧内容 */

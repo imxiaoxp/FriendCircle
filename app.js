@@ -132,6 +132,22 @@
         });
     }
 
+    /* ============ 详情页悬浮返回按钮 ============ */
+    /* 返回条吸顶后被 solid 顶栏遮挡，此时在头像列下方显示 sticky 浮钮；
+       滚回顶栏变透明（返回条重新可见）即隐藏归位 */
+    (function () {
+        var bar = document.querySelector('.fc-detail-bar');
+        var float = document.querySelector('.fc-back-float');
+        var topbar = document.querySelector('.fc-topbar');
+        if (!bar || !float || !topbar) return;
+        function sync() {
+            float.classList.toggle('visible',
+                topbar.classList.contains('solid') && bar.getBoundingClientRect().top <= 0);
+        }
+        window.addEventListener('scroll', sync, { passive: true });
+        sync();
+    })();
+
     /* ============ 点赞（可取消） ============ */
     var likeBusy = false;
 

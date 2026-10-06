@@ -703,9 +703,20 @@ function fcMomentHtml($archive, $detail = false)
     $likeUrl = htmlspecialchars(fcLikeUrl(), ENT_QUOTES, 'UTF-8');
     ?>
     <article class="fc-card" data-cid="<?php echo $cid; ?>">
-        <div class="fc-card-avatar">
-            <a href="<?php echo $authorUrl; ?>" title="<?php echo $author; ?>"><img
-                    src="<?php echo htmlspecialchars($avatar, ENT_QUOTES, 'UTF-8'); ?>" alt="<?php echo $author; ?>" loading="lazy"></a>
+        <div class="fc-card-side">
+            <div class="fc-card-avatar">
+                <a href="<?php echo $authorUrl; ?>" title="<?php echo $author; ?>"><img
+                        src="<?php echo htmlspecialchars($avatar, ENT_QUOTES, 'UTF-8'); ?>" alt="<?php echo $author; ?>" loading="lazy"></a>
+            </div>
+            <?php if ($detail): ?>
+            <a class="fc-back-float" href="<?php echo htmlspecialchars((string) $options->rootUrl . '/', ENT_QUOTES, 'UTF-8'); ?>"
+                title="<?php _e('返回'); ?>" aria-label="<?php _e('返回'); ?>">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6" />
+                </svg>
+            </a>
+            <?php endif; ?>
         </div>
         <div class="fc-card-body">
             <div class="fc-card-head">
