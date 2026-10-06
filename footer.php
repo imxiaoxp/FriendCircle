@@ -77,6 +77,15 @@ if (($this->options->fcCounterEnabled ?? '0') == '1' && ($this->options->fcCount
         <button class="fc-search-close" type="button" aria-label="关闭">&times;</button>
     </form>
 </div>
+<script>window.fcPjaxEnabled = <?php echo (int) fcOption($this->options, 'fcPjax', '0') ? 'true' : 'false'; ?>;</script>
+<script>console.log("\n %c FriendCircle v<?php echo FC_VERSION; ?> %c https://github.com/imxiaoxp/FriendCircle \n", "color:#fadfa3;background:#030307;padding:5px 0;font-weight:bold;", "color:#fff;background:#4a5b6a;padding:5px 0;");</script>
+<?php
+/* 后台「PJAX 自定义重载函数」：按行拆分，去掉空行与 // 注释行 */
+$_fcReloadLines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) fcOption($this->options, 'fcPjaxReload', ''))), function ($l) {
+    return $l !== '' && strpos($l, '//') !== 0;
+}));
+?>
+<script>window.fcPjaxReloadLines = <?php echo json_encode($_fcReloadLines, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG); ?>;</script>
 <script src="<?php $this->options->themeUrl('app.js'); ?>?v=<?php echo filemtime(__DIR__ . '/app.js'); ?>"></script>
 <?php $this->footer(); ?>
 </body>

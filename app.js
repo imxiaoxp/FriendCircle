@@ -20,11 +20,12 @@
     }
 
     /* ============ 滚动联动：顶栏变色 + 返回顶部按钮显隐 ============ */
+    /* 顶栏节点经 PJAX 移植保留，封面元素随页面替换——动态查询保证换页后判定仍正确 */
     var topbar = document.getElementById('fc-topbar');
-    var cover = document.querySelector('.fc-header');
     var backtop = document.getElementById('fc-backtop');
     if (topbar || backtop) {
         var onScroll = function () {
+            var cover = document.querySelector('.fc-header');
             if (topbar && cover) {
                 topbar.classList.toggle('solid', window.scrollY > cover.offsetHeight - 52);
             }
@@ -35,6 +36,127 @@
         window.addEventListener('scroll', onScroll, { passive: true });
         onScroll();
     }
+
+    /* ============ 全局媒体互斥：同一时间仅允许一个媒体播放 ============ */
+    /* 任一媒体（背景音乐 / APlayer / VideoCollector 等）开始播放时，
+       自动暂停其它正在播放的媒体。
+       - 媒体事件不冒泡，需捕获阶段监听；VideoCollector 等插件把播放器渲染进 iframe，
+         对同源 iframe 的 contentDocument 同样绑定监听，暂停时也遍历 iframe 内媒体；
+       - APlayer 的 audio 元素游离于 DOM 之外（不 appendChild），原生 play 事件
+         到不了 document，须通过实例 on('play') 桥接、实例 pause() 接口暂停；
+       - 直接对元素 pause，插件（APlayer/ArtPlayer）UI 会随 pause 事件自行同步 */
+    (function () {
+        function eachDoc(fn) {
+            fn(document);
+            document.querySelectorAll('iframe').forEach(function (frame) {
+                try {
+                    if (frame.contentDocument) fn(frame.contentDocument);
+                } catch (err) {} /* 跨域 iframe 不可访问，跳过 */
+            });
+        }
+
+        function pauseOthers(target) {
+            eachDoc(function (doc) {
+                doc.querySelectorAll('audio, video').forEach(function (m) {
+                    if (m !== target && !m.paused) {
+                        try {
+                            m.pause();
+                        } catch (err) {}
+                    }
+                });
+            });
+            /* APlayer 实例（audio 不在 DOM，DOM 查询不可见） */
+            (window.aplayers || []).forEach(function (ap) {
+                if (ap && ap !== target && ap.audio && ap.audio !== target && !ap.audio.paused) {
+                    try {
+                        ap.pause();
+                    } catch (err) {}
+                }
+            });
+        }
+
+        function bindPlay(doc) {
+            doc.addEventListener('play', function (e) {
+                if (e.target && e.target.pause) pauseOthers(e.target);
+            }, true);
+        }
+
+        bindPlay(document);
+
+        /* iframe 懒加载/延迟加载完成后补绑监听（load 不冒泡，捕获可拦截） */
+        document.addEventListener('load', function (e) {
+            var frame = e.target;
+            if (!frame || frame.tagName !== 'IFRAME') return;
+            try {
+                var doc = frame.contentDocument;
+                if (doc && !doc.fcMutexBound) {
+                    doc.fcMutexBound = true;
+                    bindPlay(doc);
+                }
+            } catch (err) {}
+        }, true);
+
+        eachDoc(function (doc) {
+            if (doc !== document && !doc.fcMutexBound) {
+                doc.fcMutexBound = true;
+                bindPlay(doc);
+            }
+        });
+
+        /* ---- APlayer 实例接入互斥 ---- */
+        /* APlayer 的 audio 游离于 DOM 之外，原生 play 事件到不了 document。
+           实例创建时机不定：Meting 对直链歌曲同步创建，对平台歌曲（data-id）
+           是 XHR 回调里才 new APlayer，因此包装 APlayer 构造函数，
+           任何时机创建的实例（首次加载 / 异步回调 / PJAX 重载）都会被接入 */
+        function bindAPlayer(ap) {
+            if (!ap || ap.fcMutexBound) return;
+            ap.fcMutexBound = true;
+            /* 游离 audio 元素可直接监听原生事件，不依赖在 DOM 中 */
+            if (ap.audio && typeof ap.audio.addEventListener === 'function') {
+                ap.audio.addEventListener('play', function () {
+                    pauseOthers(ap.audio);
+                });
+            }
+            if (typeof ap.on === 'function') {
+                ap.on('play', function () {
+                    pauseOthers(ap.audio || ap);
+                });
+            }
+        }
+
+        function wrapAPlayer() {
+            var Raw = window.APlayer;
+            if (typeof Raw !== 'function' || Raw.fcMutexWrapped) return;
+            var Wrapped = function (options) {
+                var inst = new Raw(options);
+                bindAPlayer(inst);
+                return inst;
+            };
+            Wrapped.prototype = Raw.prototype; /* 保持 instanceof 兼容 */
+            for (var k in Raw) {
+                if (Object.prototype.hasOwnProperty.call(Raw, k)) Wrapped[k] = Raw[k];
+            }
+            Wrapped.fcMutexWrapped = true;
+            window.APlayer = Wrapped;
+        }
+
+        function attachAPlayers() {
+            wrapAPlayer();
+            (window.aplayers || []).forEach(bindAPlayer);
+        }
+
+        /* APlayer.min.js 经插件 header 钩子先于本文件输出，直接包装即可；
+           DOMContentLoaded 后兜底再试一次（防脚本顺序变化），
+           并接入此时已创建的实例 */
+        wrapAPlayer();
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function () {
+                setTimeout(attachAPlayers, 0);
+            });
+        } else {
+            setTimeout(attachAPlayers, 0);
+        }
+    })();
 
     if (backtop) {
         backtop.addEventListener('click', function () {
@@ -133,17 +255,18 @@
     }
 
     /* ============ 详情页悬浮返回按钮 ============ */
-    /* 返回条吸顶后被 solid 顶栏遮挡，此时在头像列下方显示 sticky 浮钮；
-       滚回顶栏变透明（返回条重新可见）即隐藏归位 */
+    /* 返回条吸顶后被 solid 顶栏遮挡时渐显；顶栏节点经 PJAX 移植保留（引用持续有效），
+       bar/float 随页面替换，故动态查询 */
     (function () {
-        var bar = document.querySelector('.fc-detail-bar');
-        var float = document.querySelector('.fc-back-float');
-        var topbar = document.querySelector('.fc-topbar');
-        if (!bar || !float || !topbar) return;
-        function sync() {
+        var topbar = document.getElementById('fc-topbar');
+        if (!topbar) return;
+        var sync = function () {
+            var bar = document.querySelector('.fc-detail-bar');
+            var float = document.querySelector('.fc-back-float');
+            if (!bar || !float) return;
             float.classList.toggle('visible',
                 topbar.classList.contains('solid') && bar.getBoundingClientRect().top <= 0);
-        }
+        };
         window.addEventListener('scroll', sync, { passive: true });
         sync();
     })();
@@ -1092,73 +1215,81 @@
         });
     })();
 
-    /* ============ 加载更多（下拉接近底部自动加载） ============ */
-    var loadmore = document.getElementById('fc-loadmore');
-    if (loadmore) {
-        var fcLoadNext = function () {
-            var next = loadmore.getAttribute('data-next');
-            if (!next || loadmore.dataset.loading === '1') return;
-            delete loadmore.dataset.failed;
-            loadmore.dataset.loading = '1';
-            loadmore.textContent = '加载中..';
+    /* ============ 页面级初始化（PJAX 切页后由 PJAX 模块重跑） ============ */
+    /* 包含随页面替换而需重新绑定/重扫的部分；document 级委托交互与静态元素
+       （顶栏、音乐、浮钮、弹窗、灯箱）均一次性绑定，不在此列 */
+    window.fcInitPage = function () {
+        var loadmore = document.getElementById('fc-loadmore');
+        if (loadmore) {
+            var fcLoadNext = function () {
+                var next = loadmore.getAttribute('data-next');
+                if (!next || loadmore.dataset.loading === '1') return;
+                delete loadmore.dataset.failed;
+                loadmore.dataset.loading = '1';
+                loadmore.textContent = '加载中..';
 
-            fetch(next, { credentials: 'same-origin' })
-                .then(function (res) { return res.text(); })
-                .then(function (html) {
-                    var doc = new DOMParser().parseFromString(html, 'text/html');
-                    var list = document.getElementById('fc-list');
-                    var items = doc.querySelectorAll('#fc-list .fc-card');
-                    items.forEach(function (node) {
-                        list.appendChild(document.adoptNode(node));
+                fetch(next, { credentials: 'same-origin' })
+                    .then(function (res) { return res.text(); })
+                    .then(function (html) {
+                        var doc = new DOMParser().parseFromString(html, 'text/html');
+                        var list = document.getElementById('fc-list');
+                        var items = doc.querySelectorAll('#fc-list .fc-card');
+                        items.forEach(function (node) {
+                            list.appendChild(document.adoptNode(node));
+                        });
+
+                        // 继承下一页链接（下一页页面中「加载更多」的 data-next 已是再下一页）
+                        var nextNode = doc.getElementById('fc-loadmore');
+                        var nextNext = nextNode ? nextNode.getAttribute('data-next') : '';
+                        if (nextNext) {
+                            loadmore.setAttribute('data-next', nextNext);
+                            loadmore.textContent = '加载更多..';
+                        } else {
+                            loadmore.removeAttribute('data-next');
+                            loadmore.textContent = '没有更多了';
+                        }
+                        fcSyncFulltextButtons();
+
+                        // 重初始化新卡片内的播放器（VideoCollector/APlayer 插件注入的全局函数，未启用时跳过）
+                        if (typeof window.initVideoCollectors === 'function') window.initVideoCollectors();
+                        if (typeof window.loadMeting === 'function') window.loadMeting();
+                        // 新卡片节点已并入 document，全文扫描即可（已有语言标注的会跳过）
+                        fcAutoDetectCode(document);
+                    })
+                    .catch(function () {
+                        loadmore.textContent = '加载失败，点击重试';
+                        loadmore.dataset.failed = '1';
+                    })
+                    .finally(function () {
+                        delete loadmore.dataset.loading;
+                        // 仍在自动触发范围内且本次未失败：链式继续加载下一页
+                        // （必须放在 finally 里，loading 标记此时才已清除，递归才会真正执行）
+                        if (!loadmore.dataset.failed
+                            && loadmore.getAttribute('data-next')
+                            && loadmore.getBoundingClientRect().top < window.innerHeight + 400) {
+                            fcLoadNext();
+                        }
                     });
+            };
 
-                    // 继承下一页链接（下一页页面中「加载更多」的 data-next 已是再下一页）
-                    var nextNode = doc.getElementById('fc-loadmore');
-                    var nextNext = nextNode ? nextNode.getAttribute('data-next') : '';
-                    if (nextNext) {
-                        loadmore.setAttribute('data-next', nextNext);
-                        loadmore.textContent = '加载更多..';
-                    } else {
-                        loadmore.removeAttribute('data-next');
-                        loadmore.textContent = '没有更多了';
-                    }
-                    fcSyncFulltextButtons();
-
-                    // 重初始化新卡片内的播放器（VideoCollector/APlayer 插件注入的全局函数，未启用时跳过）
-                    if (typeof window.initVideoCollectors === 'function') window.initVideoCollectors();
-                    if (typeof window.loadMeting === 'function') window.loadMeting();
-                    // 新卡片节点已并入 document，全文扫描即可（已有语言标注的会跳过）
-                    fcAutoDetectCode(document);
-                })
-                .catch(function () {
-                    loadmore.textContent = '加载失败，点击重试';
-                    loadmore.dataset.failed = '1';
-                })
-                .finally(function () {
-                    delete loadmore.dataset.loading;
-                    // 仍在自动触发范围内且本次未失败：链式继续加载下一页
-                    // （必须放在 finally 里，loading 标记此时才已清除，递归才会真正执行）
-                    if (!loadmore.dataset.failed
-                        && loadmore.getAttribute('data-next')
-                        && loadmore.getBoundingClientRect().top < window.innerHeight + 400) {
-                        fcLoadNext();
-                    }
-                });
-        };
-
-        // 触发点进入视口前 400px 即自动加载；失败后仍可点击重试
-        if ('IntersectionObserver' in window) {
-            var fcLoader = new IntersectionObserver(function (entries) {
-                entries.forEach(function (en) {
-                    if (en.isIntersecting) fcLoadNext();
-                });
-            }, { rootMargin: '400px 0px' });
-            fcLoader.observe(loadmore);
+            // 触发点进入视口前 400px 即自动加载；失败后仍可点击重试
+            // （PJAX 每次换页重建 observer；旧 disconnect 防止实例累积）
+            if ('IntersectionObserver' in window) {
+                if (window._fcLoader) window._fcLoader.disconnect();
+                var fcLoader = new IntersectionObserver(function (entries) {
+                    entries.forEach(function (en) {
+                        if (en.isIntersecting) fcLoadNext();
+                    });
+                }, { rootMargin: '400px 0px' });
+                fcLoader.observe(loadmore);
+                window._fcLoader = fcLoader;
+            }
+            loadmore.addEventListener('click', fcLoadNext);
         }
-        loadmore.addEventListener('click', fcLoadNext);
-    }
 
-    fcSyncFulltextButtons();
+        fcSyncFulltextButtons();
+        fcAutoDetectCode(document);
+    };
 
     /* ============ Prism：未标注语言的代码块自动识别语言 ============ */
     // Prism 本身无语言检测；autoloader 只按需加载已标注语言。
@@ -1192,6 +1323,212 @@
 
     // Prism 核心在 head 先注册了 DOMContentLoaded 高亮，此处后注册自然排在其后
     document.addEventListener('DOMContentLoaded', function () {
-        fcAutoDetectCode(document);
+        window.fcInitPage();
     });
+})();
+
+/* ============ PJAX：站内无刷新跳转 ============ */
+/* fetch 新页面替换 .fc-page 主体（顶栏节点移植保留背景音乐与监听），head 中
+   主题/插件资源按需补载；完成后重跑页面级初始化，并重载 APlayer（loadMeting）
+   与 VideoCollector（initVideoCollectors）。任一环节失败整页跳转兜底。 */
+(function () {
+    if (!window.history || !window.history.pushState || window.fcPjaxEnabled === false) return;
+
+    var SKIP_EXT = /\.(png|jpe?g|gif|webp|svg|ico|css|js|mjs|zip|rar|7z|tar|gz|mp3|mp4|m4a|wav|ogg|flac|avi|mkv|pdf|txt|xml|rss|json|woff2?|ttf|eot)(\?|#|$)/i;
+    var SKIP_PATH = /(\/admin(\/|$)|\/login\b|\/logout\b|\/action\/|\/xmlrpc\.php|\/feed\b)/i;
+    var navigating = false;
+
+    function assetUrl(node) {
+        var raw = node.getAttribute('href') || node.getAttribute('src') || '';
+        if (!raw) return '';
+        try {
+            return new URL(raw, location.href).href;
+        } catch (e) {
+            return '';
+        }
+    }
+
+    /* 当前 head 已有资源集合（含 VideoCollector 的 meta referrer） */
+    function currentAssets() {
+        var have = {};
+        document.head.querySelectorAll('link[href], script[src], meta[name="referrer"]').forEach(function (n) {
+            have[n.tagName === 'META' ? 'meta:referrer' : assetUrl(n)] = true;
+        });
+        return have;
+    }
+
+    /* 新页面 head 缺失的样式/脚本/meta 动态补载（等全部 onload，避免裸样式与未定义函数） */
+    function pendingAssets(doc, have) {
+        var tasks = [];
+        doc.head.querySelectorAll('link[rel="stylesheet"], script[src], meta[name="referrer"]').forEach(function (n) {
+            if (n.tagName === 'META') {
+                if (!have['meta:referrer']) {
+                    document.head.appendChild(document.importNode(n, true));
+                    have['meta:referrer'] = true;
+                }
+                return;
+            }
+            var url = assetUrl(n);
+            if (!url || have[url]) return;
+            have[url] = true;
+            tasks.push(new Promise(function (resolve) {
+                var el = document.createElement(n.tagName === 'LINK' ? 'link' : 'script');
+                if (n.tagName === 'LINK') {
+                    el.rel = 'stylesheet';
+                    el.href = url;
+                } else {
+                    el.src = url;
+                }
+                el.onload = el.onerror = resolve;
+                setTimeout(resolve, 8000); // CDN 缓慢时不阻塞跳转
+                document.head.appendChild(el);
+            }));
+        });
+        return Promise.all(tasks);
+    }
+
+    function replacePage(doc) {
+        var oldPage = document.querySelector('.fc-page');
+        var fresh = doc.querySelector('.fc-page');
+        if (!oldPage || !fresh) return false; // 非主题页面（后台等）→ 交给调用方整页跳转
+
+        // 停掉正文内媒体播放；APlayer 旧实例按插件官方 PJAX 方案逐个销毁
+        // （aplayers 为 meting.js 全局实例数组，未启用插件时跳过；背景音乐 #fc-bgm 随节点移植保留，不打断）
+        if (typeof aplayers !== 'undefined') {
+            for (var i = 0; i < aplayers.length; i++) {
+                try {
+                    aplayers[i].destroy();
+                } catch (e) {}
+            }
+        }
+        document.querySelectorAll('video, audio').forEach(function (m) {
+            if (m.id !== 'fc-bgm') {
+                try {
+                    m.pause();
+                } catch (e) {}
+            }
+        });
+
+        // 背景音乐保持播放：旧顶栏在同一文档内摘出暂挂 body，换页后插回。
+        // 媒体元素同文档移动不打断播放；跨文档 adoptNode 会重置媒体状态
+        // （paused=true、进度清零），故顶栏节点绝不离开主文档。
+        var oldTopbar = document.getElementById('fc-topbar');
+        if (oldTopbar) {
+            oldTopbar.hidden = true;
+            document.body.appendChild(oldTopbar);
+        }
+        // 丢弃新页面自带顶栏（避免出现两个 #fc-bgm）
+        var freshTopbar = fresh.querySelector('#fc-topbar');
+        if (freshTopbar) freshTopbar.remove();
+
+        // 同步详情页的 Prism 文案属性（进入详情补上、离开移除）
+        Array.prototype.forEach.call(document.documentElement.attributes, function (attr) {
+            if (attr.name.indexOf('data-prismjs') === 0 && !doc.documentElement.hasAttribute(attr.name)) {
+                document.documentElement.removeAttribute(attr.name);
+            }
+        });
+        Array.prototype.forEach.call(doc.documentElement.attributes, function (attr) {
+            if (attr.name.indexOf('data-prismjs') === 0) {
+                document.documentElement.setAttribute(attr.name, attr.value);
+            }
+        });
+
+        document.title = doc.title;
+        oldPage.replaceWith(document.adoptNode(fresh));
+
+        // 顶栏插回新页面头部（同文档移动，音乐持续、监听延续）
+        var page = document.querySelector('.fc-page');
+        if (oldTopbar && page) {
+            var freshHeader = page.querySelector('.fc-header');
+            if (freshHeader) {
+                freshHeader.insertBefore(oldTopbar, freshHeader.firstChild);
+            } else {
+                page.insertBefore(oldTopbar, page.firstChild);
+            }
+            oldTopbar.hidden = false;
+        }
+        window.scrollTo(0, 0);
+        return true;
+    }
+
+    function navigate(url, push) {
+        if (navigating) return;
+        navigating = true;
+        if (window.NProgress) NProgress.start();
+        var have = currentAssets();
+        fetch(url, { credentials: 'same-origin' })
+            .then(function (res) {
+                if (!res.ok) throw new Error(res.status);
+                return res.text();
+            })
+            .then(function (html) {
+                var doc = new DOMParser().parseFromString(html, 'text/html');
+                return pendingAssets(doc, have).then(function () {
+                    return doc;
+                });
+            })
+            .then(function (doc) {
+                if (!replacePage(doc)) {
+                    location.href = url;
+                    return;
+                }
+                if (push) history.pushState({ pjax: true }, '', url);
+                // 主题页面级交互重跑 + 插件重载（APlayer / VideoCollector）
+                if (typeof window.fcInitPage === 'function') window.fcInitPage();
+                // Prism 全量高亮新页面：预标注语言块不会被自动识别流程处理，
+                // 且 Prism 自身的 DOMContentLoaded 高亮在 PJAX 后不会重跑（幂等，可安全重复）
+                if (window.Prism) {
+                    var fcPageEl = document.querySelector('.fc-page');
+                    if (fcPageEl) Prism.highlightAllUnder(fcPageEl);
+                }
+                if (typeof window.loadMeting === 'function') window.loadMeting();
+                if (typeof window.initVideoCollectors === 'function') window.initVideoCollectors();
+                // 后台「PJAX 自定义重载函数」：每行一条语句依次执行（单行失败不影响后续）
+                if (Array.isArray(window.fcPjaxReloadLines) && window.fcPjaxReloadLines.length) {
+                    window.fcPjaxReloadLines.forEach(function (line) {
+                        try {
+                            new Function(line)();
+                        } catch (err) {
+                            console.error('[FriendCircle] PJAX 重载语句执行失败:', line, err);
+                        }
+                    });
+                }
+                if (window.NProgress) NProgress.done();
+                navigating = false;
+            })
+            .catch(function () {
+                location.href = url; // PJAX 失败整页跳转兜底
+            });
+    }
+
+    function shouldIntercept(a, e) {
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return false;
+        if ((a.target && a.target !== '_self') || a.hasAttribute('download')) return false;
+        var href = a.getAttribute('href');
+        if (!href || href.charAt(0) === '#' || /^(mailto|tel|javascript|data):/i.test(href)) return false;
+        if (SKIP_EXT.test(href) || SKIP_PATH.test(href)) return false;
+        var url;
+        try {
+            url = new URL(href, location.href);
+        } catch (err) {
+            return false;
+        }
+        if (url.origin !== location.origin) return false;
+        // 同页锚点（如评论「查看更多」的 permalink#comments）：原生定位
+        if (url.hash && url.pathname + url.search === location.pathname + location.search) return false;
+        return true;
+    }
+
+    document.addEventListener('click', function (e) {
+        var a = e.target && e.target.closest ? e.target.closest('a') : null;
+        if (!a || !shouldIntercept(a, e)) return;
+        e.preventDefault();
+        navigate(a.href, true);
+    });
+
+    window.addEventListener('popstate', function () {
+        navigate(location.href, false);
+    });
+
+    history.replaceState({ pjax: true }, '', location.href);
 })();

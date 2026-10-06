@@ -5,10 +5,15 @@
  *
  * @package FriendCircle
  * @author Xiao
- * @version 1.0.0
+ * @version 1.1.0
  * @link https://xiao.cn.mt
  */
 if (!defined('__TYPECHO_ROOT_DIR__')) exit;
+
+/* 主题版本号：控制台横幅显示，与 index.php 头注释 @version 保持一致 */
+if (!defined('FC_VERSION')) {
+    define('FC_VERSION', '1.1.0');
+}
 
 // 评论渲染与查询函数集（fcCommentToken / fcInlineCommentsHtml / fcInlineCommentForm 等）
 require_once __DIR__ . '/comments.php';
@@ -76,6 +81,25 @@ function themeConfig($form)
         'auto',
         _t('暗色模式'),
         _t('跟随系统时访客可手动切换并记忆偏好')
+    ));
+
+    $form->addInput(new Typecho_Widget_Helper_Form_Element_Radio(
+        'fcPjax',
+        array(
+            '1' => _t('开启'),
+            '0' => _t('关闭'),
+        ),
+        '0',
+        _t('PJAX 无刷新跳转'),
+        _t('站内点击链接不整页刷新，切换后自动重载 APlayer / VideoCollector 播放器与代码高亮；背景音乐跨页持续播放')
+    ));
+
+    $form->addInput(new Typecho_Widget_Helper_Form_Element_Textarea(
+        'fcPjaxReload',
+        null,
+        '',
+        _t('PJAX 自定义重载函数'),
+        _t('每行一条 JS 语句，PJAX 切页完成后在内置 loadMeting / initVideoCollectors 之后依次执行，用于重载其它插件的播放器或组件；空行与 // 开头的注释行会跳过，留空则不执行')
     ));
 
     $form->addInput(new Typecho_Widget_Helper_Form_Element_Text(
