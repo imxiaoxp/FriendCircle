@@ -492,6 +492,26 @@ function getAplayerHtml($content)
 }
 
 /**
+ * 链接统一新窗口：未带 target 的 <a> 补 _blank 与 rel（防 opener 泄露）
+ *
+ * @param string $html 已渲染的 HTML 内容
+ * @return string
+ */
+function fcLinkBlank($html)
+{
+    if (false === strpos((string) $html, '<a')) {
+        return $html;
+    }
+    return preg_replace_callback('/<a\s([^>]*)>/i', function ($m) {
+        $attrs = $m[1];
+        if (false === stripos($attrs, 'target=')) {
+            $attrs .= ' target="_blank" rel="noopener noreferrer nofollow"';
+        }
+        return '<a ' . $attrs . '>';
+    }, $html);
+}
+
+/**
  * 动态正文：剔除脚本/播放器等块级内容，仅保留行内文字式样
  *
  * @param string $content 已渲染的文章内容
@@ -518,15 +538,7 @@ function fcMomentText($content, $keepBlocks = false)
     $html = trim(strip_tags($html, $allowed));
 
     // 链接统一新窗口
-    if (false !== strpos($html, '<a')) {
-        $html = preg_replace_callback('/<a\s([^>]*)>/i', function ($m) {
-            $attrs = $m[1];
-            if (false === stripos($attrs, 'target=')) {
-                $attrs .= ' target="_blank" rel="noopener noreferrer nofollow"';
-            }
-            return '<a ' . $attrs . '>';
-        }, $html);
-    }
+    $html = fcLinkBlank($html);
 
     // 去掉首尾多余换行
     $html = preg_replace('#^(?:\s*<br>\s*)+#', '', $html);
@@ -701,7 +713,7 @@ function fcMomentHtml($archive, $detail = false)
     // 详情页按原 Typecho 渲染：图片、代码块、播放器插件输出全部保留在正文原位
     $fcRaw = (string) $archive->content;
     if ($detail) {
-        $text = $fcRaw;
+        $text = fcLinkBlank($fcRaw);
     } else {
         $fcVideoFull = getPlayerHtml($fcRaw);
         $fcAudio = getAplayerHtml($fcRaw);
