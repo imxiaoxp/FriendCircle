@@ -76,11 +76,23 @@ FriendCircle/
 ├── page.php             # 独立页面
 ├── header.php           # 页头（暗色初始化、Prism CDN、顶栏）
 ├── footer.php           # 页尾（悬浮按钮组、友链 / 搜索弹窗、统计条、脚本）
-├── style.css            # 全部样式（含暗色模式与插件适配）
-├── app.js               # 前端交互（评论 / 点赞 / 加载 / 弹窗 / 统计等）
+├── style.css            # 全部样式源文件（含暗色模式与插件适配），页面实际加载 style.min.css
+├── style.min.css        # style.css 压缩产物（由 header.php 引用）
+├── app.js               # 前端交互源文件（评论 / 点赞 / 加载 / 弹窗 / 统计等），页面实际加载 app.min.js
+├── app.min.js           # app.js 压缩产物（由 footer.php 引用）
 ├── OwO.json             # OwO 表情码表
 └── assets/
     └── img/             # 主题默认图片（封面、默认头像）
+```
+
+## 维护说明
+
+- `app.js` 与 `style.css` 是源文件，供后期修改；页面实际引用压缩产物 `app.min.js` / `style.min.css`
+- 修改源文件后需重新压缩（本机需 Node.js）：
+
+```bash
+npx esbuild app.js --minify --outfile=app.min.js
+npx esbuild style.css --minify --outfile=style.min.css
 ```
 
 ## 许可证

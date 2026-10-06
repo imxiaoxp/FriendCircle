@@ -29,7 +29,7 @@
             } catch (e) {}
         })();
     </script>
-    <link rel="stylesheet" href="<?php $this->options->themeUrl('style.css'); ?>?v=<?php echo filemtime(__DIR__ . '/style.css'); ?>">
+    <link rel="stylesheet" href="<?php $this->options->themeUrl('style.min.css'); ?>?v=<?php echo filemtime(__DIR__ . '/style.min.css'); ?>">
     <?php if (!empty($GLOBALS['fcPrism'])): ?>
         <!-- Prism 代码高亮（CDN：核心 + 自动加载语言 + 行号 + 工具栏复制） -->
         <link rel="stylesheet" href="https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css">

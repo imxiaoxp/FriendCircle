@@ -1289,6 +1289,7 @@
 
         fcSyncFulltextButtons();
         fcAutoDetectCode(document);
+        fcExternalLinks(document);
     };
 
     /* ============ Prism：未标注语言的代码块自动识别语言 ============ */
@@ -1318,6 +1319,29 @@
             if (code.parentElement) code.parentElement.classList.add('language-' + lang);
             // 语言定义缺失时 autoloader 会异步加载并自动重高亮
             Prism.highlightElement(code);
+        });
+    }
+
+    /* ============ 站外链接新窗口打开 ============ */
+    // Typecho 原生不为正文站外链接加 target；这里对详情页 / 独立页正文
+    // 的站外 <a> 补 target="_blank"，rel 补 noopener 防 window.opener 泄露；
+    // fcInitPage 在 PJAX 换页后重跑，天然覆盖新页面
+    function fcExternalLinks(root) {
+        (root || document).querySelectorAll('.fc-detail-text a[href], .fc-page-card a[href]').forEach(function (a) {
+            var href = a.getAttribute('href');
+            if (!href || /^(mailto:|tel:|javascript:|data:|#)/i.test(href)) return;
+            var url;
+            try {
+                url = new URL(href, location.href);
+            } catch (err) {
+                return;
+            }
+            if (url.origin === location.origin) return;
+            a.setAttribute('target', '_blank');
+            var rel = (a.getAttribute('rel') || '').trim().split(/\s+/);
+            if (rel.indexOf('noopener') === -1) rel.push('noopener');
+            if (rel.indexOf('noreferrer') === -1) rel.push('noreferrer');
+            a.setAttribute('rel', rel.join(' '));
         });
     }
 
