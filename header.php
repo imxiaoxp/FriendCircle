@@ -45,7 +45,15 @@
 <body>
 <div class="centent">
     <main class="fc-page">
-        <?php $cover = fcCoverImage($this->options); ?>
+        <?php
+        $cover = fcCoverImage($this->options);
+        // 封面地址为视频扩展名时改用无声视频背景（自动播放、循环），不计入媒体互斥
+        $coverVideo = '' !== $cover && in_array(
+            strtolower((string) pathinfo((string) parse_url($cover, PHP_URL_PATH), PATHINFO_EXTENSION)),
+            array('mp4', 'webm', 'ogv', 'mov', 'm4v'),
+            true
+        );
+        ?>
         <div class="fc-header">
             <div class="fc-topbar" id="fc-topbar">
                 <div class="fc-topbar-left">
@@ -103,7 +111,13 @@
                 </div>
             </div>
             <div class="fc-cover<?php echo '' === $cover ? ' fc-cover-gradient' : ''; ?>"
-                <?php if ('' !== $cover): ?>style="background-image:url('<?php echo htmlspecialchars($cover, ENT_QUOTES, 'UTF-8'); ?>')"<?php endif; ?>></div>
+                <?php if ('' !== $cover && !$coverVideo): ?>style="background-image:url('<?php echo htmlspecialchars($cover, ENT_QUOTES, 'UTF-8'); ?>')"<?php endif; ?>>
+                <?php if ($coverVideo): ?>
+                    <video class="fc-cover-video"
+                        src="<?php echo htmlspecialchars($cover, ENT_QUOTES, 'UTF-8'); ?>"
+                        muted autoplay loop playsinline></video>
+                <?php endif; ?>
+            </div>
         </div>
 
         <div class="fc-profile">

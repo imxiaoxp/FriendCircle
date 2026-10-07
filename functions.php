@@ -29,8 +29,8 @@ function themeConfig($form)
         'fcCoverImage',
         null,
         'assets/img/cover.jpg',
-        _t('封面图片 URL'),
-        _t('顶部封面大图地址，留空时显示纯色渐变')
+        _t('封面图片 / 视频 URL'),
+        _t('顶部封面大图地址，填 mp4/webm 等视频地址时作为静音循环背景视频播放（不受媒体互斥影响），留空时显示纯色渐变')
     ));
 
     $form->addInput(new Typecho_Widget_Helper_Form_Element_Text(

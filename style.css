@@ -204,11 +204,21 @@ button {
 }
 
 .fc-cover {
+    position: relative;
     width: 100%;
     height: 100%;
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+}
+
+/* 封面无声视频背景：铺满裁剪，不计入媒体互斥（app.js 排除 .fc-cover 内视频） */
+.fc-cover-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 
 .fc-cover-gradient {

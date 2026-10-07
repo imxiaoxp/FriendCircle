@@ -55,10 +55,15 @@
             });
         }
 
+        /* 封面背景视频（.fc-cover 内静音循环视频）游离于互斥体系之外 */
+        function isCoverVideo(m) {
+            return m.tagName === 'VIDEO' && !!(m.closest && m.closest('.fc-cover'));
+        }
+
         function pauseOthers(target) {
             eachDoc(function (doc) {
                 doc.querySelectorAll('audio, video').forEach(function (m) {
-                    if (m !== target && !m.paused) {
+                    if (m !== target && !isCoverVideo(m) && !m.paused) {
                         try {
                             m.pause();
                         } catch (err) {}
@@ -77,7 +82,9 @@
 
         function bindPlay(doc) {
             doc.addEventListener('play', function (e) {
-                if (e.target && e.target.pause) pauseOthers(e.target);
+                var t = e.target;
+                if (!t || !t.pause || isCoverVideo(t)) return;
+                pauseOthers(t);
             }, true);
         }
 
