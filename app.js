@@ -1519,6 +1519,27 @@
         return true;
     }
 
+    /* 搜索表单无刷新提交：GET 整页跳转改为 PJAX，换页后关闭搜索弹窗；
+       空关键词仅关弹窗；URL 构造异常退回原生提交 */
+    document.addEventListener('submit', function (e) {
+        var form = e.target;
+        if (!form || !form.classList || !form.classList.contains('fc-search-bar')) return;
+        e.preventDefault();
+        var input = form.querySelector('input[name="s"]');
+        var kw = input ? input.value.trim() : '';
+        var modal = document.getElementById('fc-search-modal');
+        if (modal) modal.classList.remove('active');
+        if (!kw) return;
+        var url;
+        try {
+            url = new URL('?s=' + encodeURIComponent(kw), form.getAttribute('action') || location.href).href;
+        } catch (err) {
+            form.submit();
+            return;
+        }
+        navigate(url, true);
+    });
+
     document.addEventListener('click', function (e) {
         var a = e.target && e.target.closest ? e.target.closest('a') : null;
         if (!a || !shouldIntercept(a, e)) return;
