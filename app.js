@@ -274,6 +274,17 @@
     /* ============ 点赞（可取消） ============ */
     var likeBusy = false;
 
+    /* 已赞文章集合：cookie 持久化（fc-liked=cid1,cid2,...），多文章状态互不覆盖，
+       跨会话保持，直到点「取消」移除 */
+    function fcLikedSet() {
+        var m = document.cookie.match(/(?:^|;\s*)fc-liked=([^;]*)/);
+        return new Set(m ? decodeURIComponent(m[1]).split(',').filter(Boolean) : []);
+    }
+    function fcSaveLiked(set) {
+        document.cookie = 'fc-liked=' + encodeURIComponent(Array.from(set).join(',')) +
+            '; path=/; max-age=31536000; SameSite=Lax';
+    }
+
     /* 点赞按钮文字随状态：已赞显示「取消」 */
     function fcSyncLikeText(btn) {
         var pill = btn.querySelector('.pill-text');
@@ -286,11 +297,7 @@
         var url = btn.getAttribute('data-url');
         if (!cid || !url) return;
 
-        var liked = false;
-        try {
-            liked = localStorage.getItem('fc-liked') === cid;
-        } catch (err) {}
-
+        var liked = fcLikedSet().has(cid);
         likeBusy = true;
         var body = new URLSearchParams();
         body.set('cid', cid);
@@ -302,13 +309,9 @@
             credentials: 'same-origin'
         }).then(function (res) { return res.json(); }).then(function (data) {
             if (typeof data.count !== 'number') return;
-            try {
-                if (liked) {
-                    localStorage.removeItem('fc-liked');
-                } else {
-                    localStorage.setItem('fc-liked', cid);
-                }
-            } catch (err) {}
+            var set = fcLikedSet();
+            if (liked) set.delete(cid); else set.add(cid);
+            fcSaveLiked(set);
 
             // 点赞/取消成功统一 toast 提示
             fcInlineMsg(null, liked ? '已取消点赞' : '点赞成功');
@@ -331,19 +334,23 @@
         });
     });
 
-    /* 初始化点赞按钮状态（本地记忆） */
-    (function () {
-        var likedCid = null;
+    /* 初始化点赞按钮状态（cookie 持久记忆，兼容迁移旧 localStorage 单值） */
+    function fcInitLikeState() {
+        var set = fcLikedSet();
         try {
-            likedCid = localStorage.getItem('fc-liked');
+            var old = localStorage.getItem('fc-liked');
+            if (old && !set.has(old)) { set.add(old); fcSaveLiked(set); }
+            localStorage.removeItem('fc-liked');
         } catch (e) {}
-        if (likedCid) {
-            document.querySelectorAll('.like-btn[data-cid="' + likedCid + '"]').forEach(function (btn) {
+        if (!set.size) return;
+        document.querySelectorAll('.like-btn[data-cid]').forEach(function (btn) {
+            if (set.has(btn.getAttribute('data-cid'))) {
                 btn.classList.add('liked');
                 fcSyncLikeText(btn);
-            });
-        }
-    })();
+            }
+        });
+    }
+    fcInitLikeState();
 
     /* ============ 内联评论 ============ */
 
@@ -1288,6 +1295,7 @@
         }
 
         fcSyncFulltextButtons();
+        fcInitLikeState();
         fcAutoDetectCode(document);
     };
 
