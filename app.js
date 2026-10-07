@@ -417,7 +417,8 @@
         img.src = url;
     }
 
-    /* 同步 fc-panel 显隐：无可见内容（赞块隐藏、列表为空、表单收起）时隐藏容器 */
+    /* 同步 fc-panel 显隐：无可见内容（赞块隐藏、列表为空、表单收起）时隐藏容器；
+       「暂无评论」占位仅在表单展开且无真实评论时显示，收起评论后一并隐藏 */
     function fcSyncZanp(item) {
         var zanp = item && item.querySelector('.fc-panel');
         if (!zanp) return;
@@ -425,9 +426,10 @@
         var list = zanp.querySelector('.fc-inline-list');
         var form = zanp.querySelector('.fc-inline-form');
         var hasList = !!(list && list.querySelector('li:not(.fc-inline-empty)'));
-        var hasContent = !!zan
-            || hasList
-            || !!(form && !form.hidden && !form.classList.contains('fc-inline-closed'));
+        var formOpen = !!(form && !form.hidden && !form.classList.contains('fc-inline-closed'));
+        var empty = list && list.querySelector('.fc-inline-empty');
+        if (empty) empty.hidden = !formOpen;
+        var hasContent = !!zan || hasList || formOpen;
         zanp.hidden = !hasContent;
     }
 
