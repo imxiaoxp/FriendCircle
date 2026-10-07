@@ -47,12 +47,20 @@
     <main class="fc-page">
         <?php
         $cover = fcCoverImage($this->options);
-        // 封面地址为视频扩展名时改用无声视频背景（自动播放、循环），不计入媒体互斥
-        $coverVideo = '' !== $cover && in_array(
-            strtolower((string) pathinfo((string) parse_url($cover, PHP_URL_PATH), PATHINFO_EXTENSION)),
-            array('mp4', 'webm', 'ogv', 'mov', 'm4v'),
-            true
-        );
+        // 封面类型：video 强制视频背景（支持无扩展名的跳转地址），image 强制图片，auto 按扩展名识别；
+        // 视频背景不计入媒体互斥
+        $coverType = fcOption($this->options, 'fcCoverType', 'auto');
+        if ('' === $cover || 'image' === $coverType) {
+            $coverVideo = false;
+        } elseif ('video' === $coverType) {
+            $coverVideo = true;
+        } else {
+            $coverVideo = in_array(
+                strtolower((string) pathinfo((string) parse_url($cover, PHP_URL_PATH), PATHINFO_EXTENSION)),
+                array('mp4', 'webm', 'ogv', 'mov', 'm4v'),
+                true
+            );
+        }
         ?>
         <div class="fc-header">
             <div class="fc-topbar" id="fc-topbar">

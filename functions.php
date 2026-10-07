@@ -33,6 +33,14 @@ function themeConfig($form)
         _t('顶部封面大图地址，填 mp4/webm 等视频地址时作为静音循环背景视频播放（不受媒体互斥影响），留空时显示纯色渐变')
     ));
 
+    $form->addInput(new Typecho_Widget_Helper_Form_Element_Radio(
+        'fcCoverType',
+        array('auto' => _t('自动识别'), 'video' => _t('视频'), 'image' => _t('图片')),
+        'auto',
+        _t('封面类型'),
+        _t('地址为无扩展名的跳转链接（如 302 到视频文件）时选「视频」强制按视频背景播放；自动识别按地址扩展名判断')
+    ));
+
     $form->addInput(new Typecho_Widget_Helper_Form_Element_Text(
         'fcAvatarImage',
         null,
