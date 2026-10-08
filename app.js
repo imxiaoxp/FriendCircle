@@ -1237,12 +1237,35 @@
     window.fcInitPage = function () {
         var loadmore = document.getElementById('fc-loadmore');
         if (loadmore) {
+            /* 骨架屏模板：仿卡片结构的灰色占位（shimmer 扫光），加载中插在列表尾部 */
+            var fcSkTpl = '<div class="fc-card fc-skeleton" aria-hidden="true">' +
+                '<div class="fc-sk-avatar"></div>' +
+                '<div class="fc-sk-main">' +
+                    '<div class="fc-sk-line" style="width:40%"></div>' +
+                    '<div class="fc-sk-line" style="width:25%"></div>' +
+                    '<div class="fc-sk-line" style="width:100%"></div>' +
+                    '<div class="fc-sk-line" style="width:88%"></div>' +
+                    '<div class="fc-sk-grid"><div class="fc-sk-cell"></div><div class="fc-sk-cell"></div><div class="fc-sk-cell"></div></div>' +
+                    '<div class="fc-sk-line" style="width:30%"></div>' +
+                '</div>' +
+            '</div>';
+            var fcShowSkeleton = function () {
+                var list = document.getElementById('fc-list');
+                if (!list || list.querySelector('.fc-skeleton')) return;
+                var html = fcSkTpl + fcSkTpl;
+                list.insertAdjacentHTML('beforeend', html);
+            };
+            var fcHideSkeleton = function () {
+                document.querySelectorAll('.fc-skeleton').forEach(function (n) { n.remove(); });
+            };
+
             var fcLoadNext = function () {
                 var next = loadmore.getAttribute('data-next');
                 if (!next || loadmore.dataset.loading === '1') return;
                 delete loadmore.dataset.failed;
                 loadmore.dataset.loading = '1';
                 loadmore.textContent = '加载中..';
+                fcShowSkeleton();
 
                 fetch(next, { credentials: 'same-origin' })
                     .then(function (res) { return res.text(); })
@@ -1250,6 +1273,7 @@
                         var doc = new DOMParser().parseFromString(html, 'text/html');
                         var list = document.getElementById('fc-list');
                         var items = doc.querySelectorAll('#fc-list .fc-card');
+                        fcHideSkeleton();
                         items.forEach(function (node) {
                             list.appendChild(document.adoptNode(node));
                         });
@@ -1273,6 +1297,7 @@
                         fcAutoDetectCode(document);
                     })
                     .catch(function () {
+                        fcHideSkeleton();
                         loadmore.textContent = '加载失败，点击重试';
                         loadmore.dataset.failed = '1';
                     })
@@ -1468,10 +1493,39 @@
         return true;
     }
 
+    /* PJAX 切页骨架：点击链接后立即用灰色占位替换主内容区（详情卡式骨架），
+       顶栏先摘出暂挂 body（与 replacePage 同一套保留逻辑，幂等），背景音乐不中断 */
+    function fcShowPjaxSkeleton() {
+        var page = document.querySelector('.fc-page');
+        if (!page) return;
+        var topbar = document.getElementById('fc-topbar');
+        if (topbar) {
+            topbar.hidden = true;
+            document.body.appendChild(topbar);
+        }
+        window.scrollTo(0, 0);
+        page.innerHTML = '<div class="fc-pjax-skeleton" aria-hidden="true">' +
+            '<div class="fc-sk-bar"></div>' +
+            '<div class="fc-card fc-skeleton">' +
+                '<div class="fc-sk-avatar"></div>' +
+                '<div class="fc-sk-main">' +
+                    '<div class="fc-sk-line" style="width:55%;height:18px"></div>' +
+                    '<div class="fc-sk-line" style="width:30%"></div>' +
+                    '<div class="fc-sk-grid"><div class="fc-sk-cell"></div><div class="fc-sk-cell"></div><div class="fc-sk-cell"></div></div>' +
+                    '<div class="fc-sk-line" style="width:100%"></div>' +
+                    '<div class="fc-sk-line" style="width:100%"></div>' +
+                    '<div class="fc-sk-line" style="width:72%"></div>' +
+                    '<div class="fc-sk-line" style="width:36%;margin-top:16px"></div>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+    }
+
     function navigate(url, push) {
         if (navigating) return;
         navigating = true;
         if (window.NProgress) NProgress.start();
+        fcShowPjaxSkeleton();
         var have = currentAssets();
         fetch(url, { credentials: 'same-origin' })
             .then(function (res) {

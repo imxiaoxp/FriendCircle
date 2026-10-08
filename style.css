@@ -2245,3 +2245,83 @@ pre[class*=language-].line-numbers {
     color: #e8ecf4;
     border-color: rgba(255, 255, 255, .08);
 }
+
+/* ============ 骨架屏（加载更多 / PJAX 切页的灰色占位） ============ */
+.fc-skeleton {
+    pointer-events: none;
+}
+
+/* PJAX 切页整页骨架容器与顶部返回条占位 */
+.fc-pjax-skeleton {
+    padding-top: 8px;
+}
+
+.fc-sk-bar {
+    height: 34px;
+    border-radius: 8px;
+    margin: 0 0 14px;
+}
+
+/* 头像列对齐真实卡片：25 + 46 + 10 = 81px */
+.fc-sk-avatar {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    margin: 0 10px 0 25px;
+    flex: none;
+}
+
+.fc-sk-main {
+    flex: 1;
+    min-width: 0;
+    padding-right: 25px;
+}
+
+.fc-sk-line {
+    height: 13px;
+    border-radius: 6px;
+    margin: 0 0 10px;
+}
+
+.fc-sk-grid {
+    display: flex;
+    gap: 6px;
+    margin: 14px 0 12px;
+}
+
+.fc-sk-cell {
+    width: 32%;
+    aspect-ratio: 1 / 1;
+    border-radius: 8px;
+}
+
+.fc-sk-avatar,
+.fc-sk-line,
+.fc-sk-cell,
+.fc-sk-bar {
+    background: linear-gradient(90deg, #ececec 25%, #f6f6f6 37%, #ececec 63%);
+    background-size: 400% 100%;
+    animation: fcSkShimmer 1.4s ease infinite;
+}
+
+[data-theme="dark"] .fc-sk-avatar,
+[data-theme="dark"] .fc-sk-line,
+[data-theme="dark"] .fc-sk-cell,
+[data-theme="dark"] .fc-sk-bar {
+    background: linear-gradient(90deg, #2b2b2b 25%, #363636 37%, #2b2b2b 63%);
+    background-size: 400% 100%;
+}
+
+@keyframes fcSkShimmer {
+    0% { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fc-skeleton .fc-sk-avatar,
+    .fc-skeleton .fc-sk-line,
+    .fc-skeleton .fc-sk-cell,
+    .fc-sk-bar {
+        animation: none;
+    }
+}
