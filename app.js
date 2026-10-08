@@ -1445,23 +1445,22 @@
             }
         }
         document.querySelectorAll('video, audio').forEach(function (m) {
-            if (m.id !== 'fc-bgm') {
+            // 背景音乐（节点移植）与封面背景视频（header 保留）均豁免，切页不打断
+            if (m.id !== 'fc-bgm' && !m.closest('.fc-cover')) {
                 try {
                     m.pause();
                 } catch (e) {}
             }
         });
 
-        // 背景音乐保持播放：旧顶栏在同一文档内摘出暂挂 body，换页后插回。
-        // fixed 定位摘出后悬浮位置不变且保持可见；媒体元素同文档移动不打断播放；
-        // 跨文档 adoptNode 会重置媒体状态（paused=true、进度清零），故顶栏节点绝不离开主文档
-        var oldTopbar = document.getElementById('fc-topbar');
-        if (oldTopbar) {
-            document.body.appendChild(oldTopbar);
-        }
-        // 丢弃新页面自带顶栏（避免出现两个 #fc-bgm）
+        // 背景音乐与封面/头像区跨页保留：.fc-header（含顶栏、封面视频）与
+        // .fc-profile 整体原位不动，只替换其下方内容节点——媒体不打断、不重启
         var freshTopbar = fresh.querySelector('#fc-topbar');
         if (freshTopbar) freshTopbar.remove();
+        var freshHeader = fresh.querySelector('.fc-header');
+        if (freshHeader) freshHeader.remove();
+        var freshProfile = fresh.querySelector('.fc-profile');
+        if (freshProfile) freshProfile.remove();
 
         // 同步详情页的 Prism 文案属性（进入详情补上、离开移除）
         Array.prototype.forEach.call(document.documentElement.attributes, function (attr) {
@@ -1476,44 +1475,31 @@
         });
 
         document.title = doc.title;
-        oldPage.replaceWith(document.adoptNode(fresh));
 
-        // 顶栏插回新页面头部（同文档移动，音乐持续、监听延续）
-        var page = document.querySelector('.fc-page');
-        if (oldTopbar && page) {
-            var freshHeader = page.querySelector('.fc-header');
-            if (freshHeader) {
-                freshHeader.insertBefore(oldTopbar, freshHeader.firstChild);
-            } else {
-                page.insertBefore(oldTopbar, page.firstChild);
-            }
-            oldTopbar.hidden = false;
-        }
+        // 旧 main：清除 header/profile 之外的所有子节点，再搬入新页内容节点
+        Array.prototype.slice.call(oldPage.children).forEach(function (child) {
+            if (child.classList.contains('fc-header') || child.classList.contains('fc-profile')) return;
+            child.remove();
+        });
+        Array.prototype.slice.call(fresh.children).forEach(function (node) {
+            oldPage.appendChild(document.adoptNode(node));
+        });
         window.scrollTo(0, 0);
         return true;
     }
 
-    /* PJAX 切页骨架：点击链接后立即用灰色占位替换主内容区（详情卡式骨架）。
-       顶栏为 fixed 定位，先摘出暂挂 body（与 replacePage 同一套保留逻辑，幂等），
-       悬浮位置不变、保持可见，背景音乐不中断，不受骨架影响 */
+    /* PJAX 切页骨架：点击链接后立即把 header/profile 下方内容替换为灰色占位
+       （详情卡式骨架）。封面/头像区与顶栏原位保留、全程可见，背景音乐不中断 */
     function fcShowPjaxSkeleton() {
         var page = document.querySelector('.fc-page');
         if (!page) return;
-        var topbar = document.getElementById('fc-topbar');
-        if (topbar) {
-            document.body.appendChild(topbar);
-        }
         window.scrollTo(0, 0);
-        page.innerHTML = '<div class="fc-pjax-skeleton" aria-hidden="true">' +
-            /* fc-sk-header 与 .fc-header（300px）同高，避免切页高度跳变 */
-            '<div class="fc-sk-header"></div>' +
-            '<div class="fc-sk-profile">' +
-                '<div class="fc-sk-lines">' +
-                    '<div class="fc-sk-line" style="width:140px"></div>' +
-                    '<div class="fc-sk-line" style="width:200px;margin-bottom:0"></div>' +
-                '</div>' +
-                '<div class="fc-sk-avatar"></div>' +
-            '</div>' +
+        Array.prototype.slice.call(page.children).forEach(function (child) {
+            if (child.classList.contains('fc-header') || child.classList.contains('fc-profile')) return;
+            child.remove();
+        });
+        page.insertAdjacentHTML('beforeend',
+            '<div class="fc-pjax-skeleton" aria-hidden="true">' +
             '<div class="fc-sk-bar"></div>' +
             '<div class="fc-card fc-skeleton">' +
                 '<div class="fc-sk-avatar"></div>' +
@@ -1527,7 +1513,7 @@
                     '<div class="fc-sk-line" style="width:36%;margin-top:16px"></div>' +
                 '</div>' +
             '</div>' +
-        '</div>';
+        '</div>');
     }
 
     function navigate(url, push) {

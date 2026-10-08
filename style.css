@@ -2255,32 +2255,9 @@ pre[class*=language-].line-numbers {
     pointer-events: none;
 }
 
-/* PJAX 切页整页骨架容器：fc-sk-header 与 .fc-header 同高（300px），
-   头像行仿 fc-profile（昵称左、头像右，上移叠在封面下缘） */
+/* PJAX 切页整页骨架容器（header/profile 原位保留，仅占位其下方内容） */
 .fc-pjax-skeleton {
     padding-top: 8px;
-}
-
-.fc-sk-header {
-    height: 300px;
-}
-
-.fc-sk-profile {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
-    margin: -23px 25px 16px 25px;
-}
-
-.fc-sk-lines {
-    flex: 1;
-    min-width: 0;
-    padding-top: 6px;
-}
-
-.fc-sk-profile .fc-sk-avatar {
-    margin: 0;
 }
 
 .fc-sk-bar {
@@ -2325,7 +2302,6 @@ pre[class*=language-].line-numbers {
 .fc-sk-avatar,
 .fc-sk-line,
 .fc-sk-cell,
-.fc-sk-header,
 .fc-sk-bar {
     background: linear-gradient(90deg, #ececec 25%, #f6f6f6 37%, #ececec 63%);
     background-size: 400% 100%;
@@ -2335,7 +2311,6 @@ pre[class*=language-].line-numbers {
 [data-theme="dark"] .fc-sk-avatar,
 [data-theme="dark"] .fc-sk-line,
 [data-theme="dark"] .fc-sk-cell,
-[data-theme="dark"] .fc-sk-header,
 [data-theme="dark"] .fc-sk-bar {
     background: linear-gradient(90deg, #2b2b2b 25%, #363636 37%, #2b2b2b 63%);
     background-size: 400% 100%;
