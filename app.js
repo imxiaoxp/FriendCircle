@@ -26,8 +26,9 @@
     if (topbar || backtop) {
         var onScroll = function () {
             var cover = document.querySelector('.fc-header');
-            if (topbar && cover) {
-                topbar.classList.toggle('solid', window.scrollY > cover.offsetHeight - 52);
+            // 无封面的页面（详情页 / PJAX 骨架阶段）必须清除 solid，避免残留底色
+            if (topbar) {
+                topbar.classList.toggle('solid', !!cover && window.scrollY > cover.offsetHeight - 52);
             }
             if (backtop) {
                 backtop.hidden = window.scrollY <= 300;
@@ -1452,11 +1453,10 @@
         });
 
         // 背景音乐保持播放：旧顶栏在同一文档内摘出暂挂 body，换页后插回。
-        // 媒体元素同文档移动不打断播放；跨文档 adoptNode 会重置媒体状态
-        // （paused=true、进度清零），故顶栏节点绝不离开主文档。
+        // fixed 定位摘出后悬浮位置不变且保持可见；媒体元素同文档移动不打断播放；
+        // 跨文档 adoptNode 会重置媒体状态（paused=true、进度清零），故顶栏节点绝不离开主文档
         var oldTopbar = document.getElementById('fc-topbar');
         if (oldTopbar) {
-            oldTopbar.hidden = true;
             document.body.appendChild(oldTopbar);
         }
         // 丢弃新页面自带顶栏（避免出现两个 #fc-bgm）
@@ -1493,18 +1493,27 @@
         return true;
     }
 
-    /* PJAX 切页骨架：点击链接后立即用灰色占位替换主内容区（详情卡式骨架），
-       顶栏先摘出暂挂 body（与 replacePage 同一套保留逻辑，幂等），背景音乐不中断 */
+    /* PJAX 切页骨架：点击链接后立即用灰色占位替换主内容区（详情卡式骨架）。
+       顶栏为 fixed 定位，先摘出暂挂 body（与 replacePage 同一套保留逻辑，幂等），
+       悬浮位置不变、保持可见，背景音乐不中断，不受骨架影响 */
     function fcShowPjaxSkeleton() {
         var page = document.querySelector('.fc-page');
         if (!page) return;
         var topbar = document.getElementById('fc-topbar');
         if (topbar) {
-            topbar.hidden = true;
             document.body.appendChild(topbar);
         }
         window.scrollTo(0, 0);
         page.innerHTML = '<div class="fc-pjax-skeleton" aria-hidden="true">' +
+            /* fc-sk-header 与 .fc-header（300px）同高，避免切页高度跳变 */
+            '<div class="fc-sk-header"></div>' +
+            '<div class="fc-sk-profile">' +
+                '<div class="fc-sk-lines">' +
+                    '<div class="fc-sk-line" style="width:140px"></div>' +
+                    '<div class="fc-sk-line" style="width:200px;margin-bottom:0"></div>' +
+                '</div>' +
+                '<div class="fc-sk-avatar"></div>' +
+            '</div>' +
             '<div class="fc-sk-bar"></div>' +
             '<div class="fc-card fc-skeleton">' +
                 '<div class="fc-sk-avatar"></div>' +
