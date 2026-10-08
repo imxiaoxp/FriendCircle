@@ -12,6 +12,7 @@
                 'tag'      => _t('标签 %s'),
                 'author'   => _t('%s 的动态'),
             ), '', ' - '); ?><?php $this->options->title(); ?></title>
+    <link rel="icon" type="image/png" href="<?php $this->options->themeUrl('assets/img/favicon.png'); ?>">
     <script>
         (function () {
             var mode = <?php echo json_encode($this->options->fcDarkMode ?: 'auto'); ?>;
