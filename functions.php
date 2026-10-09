@@ -712,7 +712,7 @@ function fcMomentHtml($archive, $detail = false)
     // 注意：$archive->options 是 protected 属性，函数作用域经 __get 会返回 NULL，
     // 必须用 Helper::options() 获取共享配置
     $options = Helper::options();
-    $author = htmlspecialchars($archive->author->name, ENT_QUOTES, 'UTF-8');
+    $author = htmlspecialchars($archive->author->screenName ?: $archive->author->name, ENT_QUOTES, 'UTF-8');
     $avatar = fcMailAvatar($archive->author->mail, $options);
     // 作者归档页链接（点击头像/昵称查看该作者全部文章）
     $authorUrl = htmlspecialchars($archive->author->permalink, ENT_QUOTES, 'UTF-8');
