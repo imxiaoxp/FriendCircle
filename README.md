@@ -1,4 +1,4 @@
-![FriendCircle](./screenshot.png)
+![FriendCircle](./screenshot.webp)
 
 # FriendCircle
 
