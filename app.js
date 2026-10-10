@@ -39,13 +39,15 @@
     }
 
     /* ============ 全局媒体互斥：同一时间仅允许一个媒体播放 ============ */
-    /* 任一媒体（背景音乐 / APlayer / VideoCollector 等）开始播放时，
-       自动暂停其它正在播放的媒体。
+    /* 以「播放状态」为准（媒体 paused 标志），不依赖按钮点击事件：
+       任一媒体进入播放态时记录开始时间并立即收敛——暂停其它播放中的媒体；
+       另有状态轮询兜底，事件错过或绑定失效时也能自动收敛到单播放。
        - 媒体事件不冒泡，需捕获阶段监听；VideoCollector 等插件把播放器渲染进 iframe，
-         对同源 iframe 的 contentDocument 同样绑定监听，暂停时也遍历 iframe 内媒体；
+         对同源 iframe 的 contentDocument 同样绑定监听；
        - APlayer 的 audio 元素游离于 DOM 之外（不 appendChild），原生 play 事件
-         到不了 document，须通过实例 on('play') 桥接、实例 pause() 接口暂停；
-       - 直接对元素 pause，插件（APlayer/ArtPlayer）UI 会随 pause 事件自行同步 */
+         到不了 document，须通过实例事件桥接；
+       - 直接对元素 pause，插件（APlayer/ArtPlayer）UI 会随 pause 事件自行同步；
+       - 封面背景视频（.fc-cover 内静音循环视频）游离于互斥体系之外 */
     (function () {
         function eachDoc(fn) {
             fn(document);
@@ -56,36 +58,54 @@
             });
         }
 
-        /* 封面背景视频（.fc-cover 内静音循环视频）游离于互斥体系之外 */
         function isCoverVideo(m) {
             return m.tagName === 'VIDEO' && !!(m.closest && m.closest('.fc-cover'));
         }
 
-        function pauseOthers(target) {
+        /* 收集当前所有播放中的媒体（DOM 内元素 + APlayer 游离 audio） */
+        function playingMedia() {
+            var list = [];
             eachDoc(function (doc) {
                 doc.querySelectorAll('audio, video').forEach(function (m) {
-                    if (m !== target && !isCoverVideo(m) && !m.paused) {
-                        try {
-                            m.pause();
-                        } catch (err) {}
-                    }
+                    if (!isCoverVideo(m) && !m.paused) list.push(m);
                 });
             });
-            /* APlayer 实例（audio 不在 DOM，DOM 查询不可见） */
             (window.aplayers || []).forEach(function (ap) {
-                if (ap && ap !== target && ap.audio && ap.audio !== target && !ap.audio.paused) {
-                    try {
-                        ap.pause();
-                    } catch (err) {}
+                if (ap && ap.audio && !ap.audio.paused) list.push(ap.audio);
+            });
+            return list;
+        }
+
+        function startedAtOf(m) {
+            return typeof m.fcStartedAt === 'number' ? m.fcStartedAt : 0;
+        }
+
+        /* 状态收敛：播放中的媒体多于一个时，保留最近开始播放的一个，其余暂停 */
+        function syncPlayback() {
+            var list = playingMedia();
+            if (list.length < 2) return;
+            var keep = list[0];
+            list.forEach(function (m) {
+                if (startedAtOf(m) > startedAtOf(keep)) keep = m;
+            });
+            list.forEach(function (m) {
+                if (m !== keep) {
+                    try { m.pause(); } catch (err) {}
                 }
             });
+        }
+
+        /* 媒体进入播放态：记录开始时间并立即收敛 */
+        function markStarted(m) {
+            if (m) m.fcStartedAt = Date.now();
+            syncPlayback();
         }
 
         function bindPlay(doc) {
             doc.addEventListener('play', function (e) {
                 var t = e.target;
                 if (!t || !t.pause || isCoverVideo(t)) return;
-                pauseOthers(t);
+                markStarted(t);
             }, true);
         }
 
@@ -122,12 +142,12 @@
             /* 游离 audio 元素可直接监听原生事件，不依赖在 DOM 中 */
             if (ap.audio && typeof ap.audio.addEventListener === 'function') {
                 ap.audio.addEventListener('play', function () {
-                    pauseOthers(ap.audio);
+                    markStarted(ap.audio);
                 });
             }
             if (typeof ap.on === 'function') {
                 ap.on('play', function () {
-                    pauseOthers(ap.audio || ap);
+                    markStarted(ap.audio);
                 });
             }
         }
@@ -164,6 +184,9 @@
         } else {
             setTimeout(attachAPlayers, 0);
         }
+
+        /* 状态轮询兜底：任何原因错过 play 事件时，最多 600ms 后自动收敛到单播放 */
+        setInterval(syncPlayback, 600);
     })();
 
     if (backtop) {
@@ -978,8 +1001,8 @@
         var bar = document.getElementById('fc-vc-counter');
         if (!bar) return;
 
-        // 统计条在右下角时标记 body，悬浮按钮组上移避让
-        if (bar.classList.contains('fc-vc-bottom-right')) {
+        // 统计条在左下角（与悬浮按钮组同侧）时标记 body，按钮组上移避让
+        if (bar.classList.contains('fc-vc-bottom-left')) {
             document.body.classList.add('fc-has-counter');
         }
 

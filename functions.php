@@ -155,7 +155,7 @@ function themeConfig($form)
         ),
         'bottom-right',
         _t('统计插入位置'),
-        _t('固定在视口对应角落（右下会自动避开悬浮按钮组）')
+        _t('固定在视口对应角落（左下会自动避开悬浮按钮组）')
     ));
 
     $form->addInput(new Typecho_Widget_Helper_Form_Element_Select(

@@ -4,7 +4,7 @@
 if (($this->options->fcCounterEnabled ?? '0') == '1' && ($this->options->fcCounterPosition ?: 'bottom-right') !== '') {
     echo renderCounterBar(fcOption($this->options, 'fcCounterPosition', 'bottom-right'));
 } ?>
-<!-- 右下角悬浮按钮组：搜索 / 明暗切换 / 返回顶部 -->
+<!-- 左下角悬浮按钮组：搜索 / 明暗切换 / 返回顶部 -->
 <div class="fc-float">
     <button class="fc-float-btn" id="fc-backtop" type="button" aria-label="返回顶部" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"

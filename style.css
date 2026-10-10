@@ -1665,10 +1665,10 @@ html.lightbox-open body {
     flex-shrink: 0;
 }
 
-/* ============ 右下角悬浮按钮组（明暗切换 / 返回顶部） ============ */
+/* ============ 左下角悬浮按钮组（明暗切换 / 返回顶部） ============ */
 .fc-float {
     position: fixed;
-    right: 16px;
+    left: 16px;
     bottom: 24px;
     z-index: 90;
     display: flex;
@@ -1676,7 +1676,7 @@ html.lightbox-open body {
     gap: 10px;
 }
 
-/* 右下角有访问统计条时，按钮组整体上移避让（统计条 bottom 16px + 高约 30px + 间距 12px） */
+/* 统计条也在左下角（与按钮组同侧）时，按钮组整体上移避让（统计条 bottom 24px + 高约 30px + 间距 4px） */
 body.fc-has-counter .fc-float {
     bottom: 58px;
 }
@@ -2086,7 +2086,7 @@ pre[class*=language-].line-numbers {
     opacity: 1;
 }
 
-/* 右下：贴近视口底部；悬浮按钮组通过 body.fc-has-counter 上移避让 */
+/* 右下：贴近视口底部（悬浮按钮组在左下，互不干扰） */
 .fc-vc-bottom-right {
     bottom: 16px;
     right: 16px;
