@@ -22,4 +22,8 @@ $this->need('header.php');
     </div>
 </article>
 
+<div class="footer">
+    <span class="footer-text">没有更多了</span>
+</div>
+
 <?php $this->need('footer.php'); ?>
