@@ -5,6 +5,7 @@
       data-prismjs-copy-error="Press Ctrl+C to copy"<?php endif; ?>>
 <head>
     <meta charset="UTF-8">
+    <meta name="referrer" content="same-origin">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title><?php $this->archiveTitle(array(
                 'category' => _t('分类 %s'),
@@ -13,6 +14,7 @@
                 'author'   => _t('%s 的动态'),
             ), '', ' - '); ?><?php $this->options->title(); ?></title>
     <link rel="icon" type="image/png" href="<?php $this->options->themeUrl('assets/img/favicon.png'); ?>">
+    <link rel="stylesheet" href="<?php $this->options->themeUrl('assets/lib/aplayer.min.css'); ?>">
     <script>
         (function () {
             var mode = <?php echo json_encode($this->options->fcDarkMode ?: 'auto'); ?>;
@@ -32,13 +34,14 @@
     </script>
     <link rel="stylesheet" href="<?php $this->options->themeUrl('style.min.css'); ?>?v=<?php echo filemtime(__DIR__ . '/style.min.css'); ?>">
     <?php if (!empty($GLOBALS['fcPrism'])): ?>
-        <!-- Prism 代码高亮（CDN：核心 + 自动加载语言 + 行号 + 工具栏复制） -->
-        <link rel="stylesheet" href="https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css">
-        <script src="https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
-        <script src="https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
-        <script src="https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
-        <script src="https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/prism/1.29.0/plugins/toolbar/prism-toolbar.min.js"></script>
-        <script src="https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/prism/1.29.0/plugins/copy-to-clipboard/prism-copy-to-clipboard.min.js"></script>
+        <!-- Prism 代码高亮（本地引用：核心 + 自动加载语言 + 行号 + 工具栏复制） -->
+        <link rel="stylesheet" href="<?php $this->options->themeUrl('assets/lib/prism/plugins/line-numbers/prism-line-numbers.min.css'); ?>">
+        <script src="<?php $this->options->themeUrl('assets/lib/prism/components/prism-core.min.js'); ?>"></script>
+        <script src="<?php $this->options->themeUrl('assets/lib/prism/plugins/autoloader/prism-autoloader.min.js'); ?>"></script>
+        <script>Prism.plugins.autoloader.languages_path = '<?php $this->options->themeUrl('assets/lib/prism/components/'); ?>';</script>
+        <script src="<?php $this->options->themeUrl('assets/lib/prism/plugins/line-numbers/prism-line-numbers.min.js'); ?>"></script>
+        <script src="<?php $this->options->themeUrl('assets/lib/prism/plugins/toolbar/prism-toolbar.min.js'); ?>"></script>
+        <script src="<?php $this->options->themeUrl('assets/lib/prism/plugins/copy-to-clipboard/prism-copy-to-clipboard.min.js'); ?>"></script>
     <?php endif; ?>
     <?php /* commentReply 置空禁用核心 TypechoComment 回复脚本（评论走主题内联容器）；传 0 会输出损坏的 <script src="0"> */ ?>
     <?php $this->header('commentReply='); ?>

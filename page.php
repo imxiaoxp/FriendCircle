@@ -17,7 +17,7 @@ $this->need('header.php');
     <div class="fc-card-body">
         <div class="fc-card-head">
             <div class="fc-card-name"><p><?php $this->title(); ?></p></div>
-            <span class="fc-text fc-page-text"><?php echo fcLinkBlank($this->content); ?></span>
+            <span class="fc-text fc-page-text"><?php echo fcLinkBlank(FC_Media::parse($this->content)); ?></span>
         </div>
     </div>
 </article>

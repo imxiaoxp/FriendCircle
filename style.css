@@ -1670,7 +1670,7 @@ html.lightbox-open body {
     position: fixed;
     left: 16px;
     bottom: 24px;
-    z-index: 90;
+    z-index: 9;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -1954,6 +1954,105 @@ pre[class*=language-].line-numbers {
     overflow: hidden;
 }
 
+/* [play] 多地址分集切换条（式样参照 VideoCollector 插件；首页信息流中已被 PHP 剔除） */
+.fc-card-body .video-tabs {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 15px;
+}
+
+.fc-card-body .video-tab {
+    padding: 10px 12px;
+    min-width: 80px;
+    text-align: center;
+    background-color: #eeeeee;
+    border: 0px solid #eeeeee;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #555555;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.fc-card-body .video-tab:hover {
+    background-color: #f5f5f5;
+    color: #333333;
+    border-color: #f5f5f5;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+.fc-card-body .video-tab.active {
+    background-color: #3498db;
+    color: #ffffff;
+    border-color: #3498db;
+}
+
+[data-theme="dark"] .fc-card-body .video-tab {
+    background-color: #222;
+    border: 0px solid #222;
+    color: #666;
+}
+
+[data-theme="dark"] .fc-card-body .video-tab:hover {
+    background-color: #424242;
+    color: #9f9f9f;
+}
+
+[data-theme="dark"] .fc-card-body .video-tab.active {
+    background-color: #233e50;
+    color: #9f9f9f;
+}
+
+/* 手机端最小宽度（同插件响应式） */
+@media screen and (min-width: 321px) and (max-width: 479px) {
+    .fc-card-body .video-tab { min-width: 88px; }
+}
+
+@media screen and (max-width: 320px) {
+    .fc-card-body .video-tab { min-width: 100px; }
+}
+
+@media screen and (min-width: 480px) and (max-width: 767px) {
+    .fc-card-body .video-tab { min-width: 85px; }
+}
+
+/* 播放器内「下一集」控件（式样同插件：点击缩放反馈） */
+.fc-video .artplayer-icon-next {
+    cursor: pointer;
+    transition: transform 0.2s ease;
+    display: inline-block;
+}
+
+.fc-video .artplayer-icon-next:active {
+    transform: scale(0.85) !important;
+}
+
+/* 播放器宽度小于 400px 时隐藏数字时间（当前时间/总时长） */
+.fc-video.vc-hide-time .art-control-time {
+    display: none !important;
+}
+
+/* 竖屏窗口模式（非全屏/网页全屏）隐藏音量、数字时间、设置控件；全屏后自动恢复 */
+.fc-video.vc-portrait-compact:not(.art-fullscreen):not(.art-fullscreen-web) .art-control-volume,
+.fc-video.vc-portrait-compact:not(.art-fullscreen):not(.art-fullscreen-web) .art-control-time,
+.fc-video.vc-portrait-compact:not(.art-fullscreen):not(.art-fullscreen-web) .art-control-setting {
+    display: none !important;
+}
+
+/* ArtPlayer 网页全屏时隐藏左下按钮组与右下计数条（app.js fullscreenWeb 事件给 body 加 .fc-videofs）：
+   播放器祖先卡片存在层叠上下文（transform 等），网页全屏容器的
+   z-index 困在其内部，z-index:19 的浮层会盖在视频上 */
+body.fc-videofs .fc-float,
+body.fc-videofs .fc-vc-bar {
+    display: none;
+}
+
 /* ===== APlayer 暗色配色（跟随 [data-theme="dark"]） ===== */
 [data-theme="dark"] .aplayer {
     background: var(--cobg);
@@ -2078,7 +2177,7 @@ pre[class*=language-].line-numbers {
     color: #1a1d29;
     border: 1px solid rgba(0, 0, 0, .06);
     position: fixed;
-    z-index: 90;
+    z-index: 9;
     pointer-events: auto;
 }
 
@@ -2328,4 +2427,40 @@ pre[class*=language-].line-numbers {
     .fc-sk-bar {
         animation: none;
     }
+}
+
+/* ============ 短代码播放器（APlayer / ArtPlayer） ============ */
+/* [Music]/[Video] 短代码容器；ArtPlayer 需要有高度的挂载点。
+   首页卡片播放器会被提取到正文区外独立输出（fc-card-body 直下），
+   详情页在正文内（.fc-text），故统一用 .fc-card-body 作用域 */
+/* 播放器包装器：默认 16:9；竖屏视频按真实宽高比自适应，最高约 40vh */
+.fc-card-body .play-player-wrapper {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    margin: 8px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+}
+
+/* 竖屏（app.js 按 videoWidth/videoHeight 加 vc-portrait） */
+.fc-card-body .play-player-wrapper.vc-portrait {
+    aspect-ratio: var(--vc-video-ratio, 0.5625);
+    max-width: calc(40vh * var(--vc-video-ratio, 0.5625));
+}
+
+/* ArtPlayer 容器：填满包装器 */
+.fc-card-body .fc-video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.fc-card-body .aplayer {
+    margin: 8px 0;
 }

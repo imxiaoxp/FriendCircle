@@ -5,18 +5,22 @@
  *
  * @package FriendCircle
  * @author Xiao
- * @version 1.1.0
+ * @version 1.2.0
  * @link https://xiao.cn.mt
  */
 if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 
 /* 主题版本号：控制台横幅显示，与 index.php 头注释 @version 保持一致 */
 if (!defined('FC_VERSION')) {
-    define('FC_VERSION', '1.1.0');
+    define('FC_VERSION', '1.2.0');
 }
 
 // 评论渲染与查询函数集（fcCommentToken / fcInlineCommentsHtml / fcInlineCommentForm 等）
 require_once __DIR__ . '/comments.php';
+
+// 原生音/视频短代码（APlayer / ArtPlayer，替代 Meting / VideoCollector 插件）：
+// FC_Media::parse() 正文解析 + 后台编辑器插入按钮
+require_once __DIR__ . '/media.php';
 
 /**
  * 主题配置
@@ -419,8 +423,7 @@ function fcFriendList($options)
  * 从已渲染的文章内容中提取第一个指定 div 容器的完整 HTML 块
  *
  * 按 div 开闭标签配对扫描，得到结构完整的第一个容器块
- * （getPlayerHtml / getAplayerHtml 共用实现，均依赖返回与原文
- * 完全一致的字符串供正文清理使用）。
+ * （fcExtractPlayers 依赖返回与原文完全一致的字符串供正文清理使用）。
  *
  * @param string $content 已渲染的文章内容
  * @param string $marker 容器开头的唯一标识
@@ -457,46 +460,38 @@ function extractDivBlock($content, $marker)
 }
 
 /**
- * 提取第一个视频播放器（VideoCollector）HTML 块
+ * 提取全部播放器块（aplayer / play-container / fc-video，按出现顺序）
  *
- * 内容经过插件链后 [play] 短代码已转换为 .play-container 播放器 HTML。
+ * 首页信息流模式用：循环提取直至无剩余，返回拼接的播放器 HTML 与
+ * 剔除后的正文，避免原生短代码渲染出的多个播放器残留在动态文本里。
  *
- * @param string $content 已渲染的文章内容
- * @return string 播放器 HTML，不存在时返回空字符串
+ * @param string $content 已解析短代码的文章内容
+ * @return array [播放器 HTML 拼接, 剔除播放器后的正文]
  */
-function getPlayerHtml($content)
+function fcExtractPlayers($content)
 {
-    return extractDivBlock($content, '<div class="play-container"');
-}
-
-/**
- * 首页展示用播放器：去掉分集切换按钮，分集请进入详情页操作
- *
- * @param string $content 已渲染的文章内容
- * @return string 播放器 HTML，不存在时返回空字符串
- */
-function getPostPlayerHtml($content)
-{
-    $player = getPlayerHtml($content);
-    if ('' === $player) {
-        return '';
+    // marker 为前缀匹配（不含右引号），兼容 class 含多个类名的容器；
+    // play-player-wrapper（播放器包装器，含竖屏自适应样式）须在 fc-video 之前匹配，
+    // 否则 wrapper 会被留在正文里成为空壳
+    $markers = array('<div class="aplayer', '<div class="play-container', '<div class="play-player-wrapper', '<div class="fc-video');
+    $html = '';
+    $clean = (string) $content;
+    while (true) {
+        $found = '';
+        foreach ($markers as $marker) {
+            $block = extractDivBlock($clean, $marker);
+            if ('' !== $block) {
+                $found = $block;
+                break;
+            }
+        }
+        if ('' === $found) {
+            break;
+        }
+        $html .= $found . "\n";
+        $clean = str_replace($found, '', $clean);
     }
-    // video-tabs 内只有 span，无嵌套 div，非贪婪匹配可安全剔除
-    return preg_replace('/<div class="video-tabs">.*?<\/div>/s', '', $player);
-}
-
-/**
- * 提取第一个音乐播放器（APlayer/Meting）HTML 块
- *
- * 内容经过插件链后 [Meting] 短代码已转换为 .aplayer 播放器 div
- * （data-* 参数由插件前端 Meting.min.js 初始化），供动态卡片直接展示。
- *
- * @param string $content 已渲染的文章内容
- * @return string 播放器 HTML，不存在时返回空字符串
- */
-function getAplayerHtml($content)
-{
-    return extractDivBlock($content, '<div class="aplayer"');
+    return array($html, $clean);
 }
 
 /**
@@ -719,23 +714,18 @@ function fcMomentHtml($archive, $detail = false)
     // 播放器块（VideoCollector/APlayer）先从正文剔除，再独立输出到正文后，
     // 避免 strip_tags 剥掉 div 标签时分集标题、影片名等内文泄漏进正文
     // 详情页按原 Typecho 渲染：图片、代码块、播放器插件输出全部保留在正文原位
-    $fcRaw = (string) $archive->content;
+    // 原生短代码先解析（[Music]/[Video]/[play] → 播放器容器），再走与插件
+    // 输出一致的提取逻辑；详情页在正文原位渲染播放器
+    $fcRaw = FC_Media::parse((string) $archive->content);
     if ($detail) {
         $text = fcLinkBlank($fcRaw);
     } else {
-        $fcVideoFull = getPlayerHtml($fcRaw);
-        $fcAudio = getAplayerHtml($fcRaw);
-        $fcVideo = getPostPlayerHtml($fcRaw);
-        $fcClean = $fcRaw;
-        if ('' !== $fcVideoFull) {
-            $fcClean = str_replace($fcVideoFull, '', $fcClean);
-        }
-        if ('' !== $fcAudio) {
-            $fcClean = str_replace($fcAudio, '', $fcClean);
-        }
+        list($fcPlayers, $fcClean) = fcExtractPlayers($fcRaw);
+        // 播放器仅首页独立输出：去掉分集切换按钮（fc-video 无该结构，不受影响）
+        $fcVideo = preg_replace('/<div class="video-tabs">.*?<\/div>/s', '', $fcPlayers);
         $text = fcMomentText($fcClean, true);
     }
-    $images = $detail ? array() : fcImages($archive->content);
+    $images = $detail ? array() : fcImages($fcRaw);
     $location = trim((string) ($archive->fields->location ?? ''));
     // $archive->date('Y-m-d') 是输出型魔术调用（直接 echo 且返回 null），
     // 必须取 Date 对象 format 返回值，否则日期裸露在列表外、卡片内时间为空
@@ -771,10 +761,9 @@ function fcMomentHtml($archive, $detail = false)
                 <?php endif; ?>
             </div>
 
-            <?php /* 播放器仅首页独立输出（已从正文剔除）；详情页在正文原位，随 content 原样渲染 */ ?>
+            <?php /* 播放器仅首页独立输出（已从正文剔除，按正文出现顺序）；详情页在正文原位渲染 */ ?>
             <?php if (!$detail): ?>
                 <?php echo $fcVideo; ?>
-                <?php echo $fcAudio; ?>
             <?php endif; ?>
 
             <?php if ($images): ?>

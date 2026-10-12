@@ -80,11 +80,12 @@
             return typeof m.fcStartedAt === 'number' ? m.fcStartedAt : 0;
         }
 
-        /* 状态收敛：播放中的媒体多于一个时，保留最近开始播放的一个，其余暂停 */
+        /* 状态收敛：播放中的媒体多于一个时，保留最近开始播放的一个，其余暂停；
+           开始时间并列（无时间戳）时保留收集顺序靠后的（后出现的视为新播放） */
         function syncPlayback() {
             var list = playingMedia();
             if (list.length < 2) return;
-            var keep = list[0];
+            var keep = list[list.length - 1];
             list.forEach(function (m) {
                 if (startedAtOf(m) > startedAtOf(keep)) keep = m;
             });
@@ -100,6 +101,10 @@
             if (m) m.fcStartedAt = Date.now();
             syncPlayback();
         }
+
+        /* 暴露给播放器初始化（fcInitMedia）：APlayer 游离 audio 不在 DOM，
+           须由初始化代码在 play 时手动标记 */
+        window.fcMarkMediaStarted = markStarted;
 
         function bindPlay(doc) {
             doc.addEventListener('play', function (e) {
@@ -1255,10 +1260,189 @@
         });
     })();
 
+    /* ============ 短代码播放器初始化（APlayer / ArtPlayer） ============ */
+    /* media.php 短代码输出 .aplayer / .fc-video 容器；首次与 PJAX 切页后均需执行。
+       APlayer 实例 push 进 window.aplayers（跨页销毁与互斥约定），
+       游离 audio 不在 DOM，play 时手动标记互斥时间戳；ArtPlayer 的 video 在 DOM 内，
+       自动被互斥捕获监听接管 */
+    function fcInitMedia() {
+        if (window.APlayer) {
+            document.querySelectorAll('.aplayer').forEach(function (el) {
+                if (el.fcApInited) return;
+                /* Meting API 链接（单曲/歌单）：前端 fetch 实时解析。
+                   API 返回的音频直链带时效签名，不能固化进 HTML，
+                   每次访问拉取保证可播；歌单数组逐项映射为 APlayer 音频列表 */
+                if (el.dataset.api) {
+                    el.fcApInited = true;
+                    fetch(el.dataset.api).then(function (r) { return r.json(); }).then(function (data) {
+                        var list = Array.isArray(data) ? data : [data];
+                        var audio = list.map(function (x) {
+                            return {
+                                name: x.name || x.title || '未命名曲目',
+                                artist: x.artist || x.author || '',
+                                url: x.url || '',
+                                cover: x.pic || '',
+                                lrc: x.lrc || ''
+                            };
+                        }).filter(function (a) { return a.url; });
+                        if (!audio.length) return;
+                        try {
+                            var ap = new APlayer({
+                                container: el,
+                                audio: audio,
+                                lrcType: 3,
+                                preload: 'metadata',
+                                mutex: false
+                            });
+                            (window.aplayers = window.aplayers || []).push(ap);
+                            if (ap.audio && typeof window.fcMarkMediaStarted === 'function') {
+                                ap.audio.addEventListener('play', function () {
+                                    window.fcMarkMediaStarted(ap.audio);
+                                });
+                            }
+                        } catch (err) {}
+                    }).catch(function () {});
+                    return;
+                }
+                if (!el.dataset.url) return;
+                el.fcApInited = true;
+                try {
+                    var ap = new APlayer({
+                        container: el,
+                        audio: [{
+                            name: el.dataset.name || '未命名曲目',
+                            artist: el.dataset.artist || '',
+                            url: el.dataset.url,
+                            cover: el.dataset.cover || '',
+                            lrc: el.dataset.lrc || ''
+                        }],
+                        lrcType: el.dataset.lrc ? 3 : 0,
+                        preload: 'metadata',
+                        mutex: false /* 互斥由主题统一管理 */
+                    });
+                    (window.aplayers = window.aplayers || []).push(ap);
+                    if (ap.audio && typeof window.fcMarkMediaStarted === 'function') {
+                        ap.audio.addEventListener('play', function () {
+                            window.fcMarkMediaStarted(ap.audio);
+                        });
+                    }
+                } catch (err) {}
+            });
+        }
+        if (window.Artplayer) {
+            document.querySelectorAll('.fc-video').forEach(function (el) {
+                if (el.fcVideoInited || !el.dataset.url) return;
+                el.fcVideoInited = true;
+                try {
+                    var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                    /* 分集（[play] 多地址）：结构与交互参照 VideoCollector 插件。
+                       完整分集列表来自容器 data-urls（\n 分隔），与分集条解耦——
+                       首页信息流剔除分集条后仍保留「下一集」控件可切换 */
+                    var box = el.closest('.play-container');
+                    var tabs = box ? box.querySelectorAll('.video-tab') : [];
+                    var urls = (el.dataset.urls || el.dataset.url || '')
+                        .split('\n').map(function (s) { return s.trim(); })
+                        .filter(function (s) { return s !== ''; });
+                    var switchTab = null;
+                    if (urls.length > 1) {
+                        el.fcTabIndex = 0;
+                        switchTab = function (index) {
+                            if (!urls[index] || index === el.fcTabIndex) return;
+                            el.fcTabIndex = index;
+                            tabs.forEach(function (t, i) { t.classList.toggle('active', i === index); });
+                            art.switchUrl(urls[index]);
+                            /* 最后一集隐藏「下一集」按钮（同插件） */
+                            var last = index >= urls.length - 1;
+                            var nextBtn = el.querySelector('.art-icon-next');
+                            if (nextBtn) {
+                                nextBtn.style.display = last ? 'none' : 'flex';
+                                if (nextBtn.parentElement) nextBtn.parentElement.style.display = last ? 'none' : 'flex';
+                            }
+                        };
+                        tabs.forEach(function (tab, i) {
+                            tab.addEventListener('click', function () { switchTab(i); });
+                        });
+                    }
+                    var art = new Artplayer({
+                        container: el,
+                        url: el.dataset.url,
+                        poster: el.dataset.pic || '',
+                        setting: true,
+                        playbackRate: true,
+                        fullscreen: true,
+                        /* 移动端窄视口（<400px）不创建网页全屏控件（彻底移除，无占位可点）；
+                           隐藏式处理会让 .art-control 容器残留占位与点击热区 */
+                        fullscreenWeb: !isMobile || (el.clientWidth || 0) >= 400,
+                        miniProgressBar: true,
+                        mutex: false, /* 同上 */
+                        lang: 'zh-cn',
+                        /* 播放器内「下一集」控件（式样同 VideoCollector：左侧跳片尾图标） */
+                        controls: urls.length > 1 ? [{
+                            position: 'left',
+                            index: 11,
+                            html: '<i class="art-icon art-icon-next hint--rounded hint--top" aria-label="下一集" style="display: flex;"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" fill="currentColor"></path></svg></i>',
+                            click: function () {
+                                var next = (el.fcTabIndex || 0) + 1;
+                                if (next < urls.length) switchTab(next);
+                            }
+                        }] : []
+                    });
+                    /* 竖屏自适应（同 VideoCollector）：竖屏时包装器按真实宽高比显示
+                       （40vh 上限由 CSS 控制），并联动窗口模式控件显隐 */
+                    var wrapper = box ? box.querySelector('.play-player-wrapper') : null;
+                    var updatePortraitCompact = function () {
+                        var compact = el.classList.contains('vc-portrait')
+                            && !art.fullscreen && !art.fullscreenWeb;
+                        el.classList.toggle('vc-portrait-compact', compact);
+                    };
+                    var applyOrientation = function () {
+                        var v = art.template && art.template.$video;
+                        if (!v || !v.videoWidth || !v.videoHeight) return;
+                        if (v.videoHeight > v.videoWidth) {
+                            if (wrapper) {
+                                wrapper.style.setProperty('--vc-video-ratio', (v.videoWidth / v.videoHeight).toFixed(4));
+                                wrapper.classList.add('vc-portrait');
+                            }
+                            el.classList.add('vc-portrait');
+                        } else {
+                            if (wrapper) {
+                                wrapper.classList.remove('vc-portrait');
+                                wrapper.style.removeProperty('--vc-video-ratio');
+                            }
+                            el.classList.remove('vc-portrait');
+                        }
+                        updatePortraitCompact();
+                    };
+                    /* 播放器宽度小于 400px 隐藏数字时间（网页全屏控件已按设备/宽度决定是否创建） */
+                    var updateTimeVisibility = function () {
+                        var w = (typeof art.width === 'number' && art.width > 0) ? art.width : (el.clientWidth || 0);
+                        el.classList.toggle('vc-hide-time', w > 0 && w < 400);
+                    };
+                    var videoEl = art.template && art.template.$video;
+                    if (videoEl) {
+                        if (videoEl.videoWidth) applyOrientation();
+                        videoEl.addEventListener('loadedmetadata', applyOrientation);
+                    }
+                    art.on('resize', updateTimeVisibility);
+                    art.on('fullscreen', updatePortraitCompact);
+                    /* 网页全屏时给 body 加标记：播放器祖先卡片存在层叠上下文，
+                       网页全屏容器的 z-index 困在其内部，z-index:19 的浮层会盖在视频上 */
+                    art.on('fullscreenWeb', function () {
+                        document.body.classList.toggle('fc-videofs', !!art.fullscreenWeb);
+                        updatePortraitCompact();
+                    });
+                    updateTimeVisibility();
+                } catch (err) {}
+            });
+        }
+    }
+    window.fcInitMedia = fcInitMedia;
+
     /* ============ 页面级初始化（PJAX 切页后由 PJAX 模块重跑） ============ */
     /* 包含随页面替换而需重新绑定/重扫的部分；document 级委托交互与静态元素
        （顶栏、音乐、浮钮、弹窗、灯箱）均一次性绑定，不在此列 */
     window.fcInitPage = function () {
+        fcInitMedia();
         var loadmore = document.getElementById('fc-loadmore');
         if (loadmore) {
             /* 骨架屏模板：仿卡片结构的灰色占位（shimmer 扫光），加载中插在列表尾部 */
