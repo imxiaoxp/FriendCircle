@@ -1389,7 +1389,9 @@
                     });
                     /* 竖屏自适应（同 VideoCollector）：竖屏时包装器按真实宽高比显示
                        （40vh 上限由 CSS 控制），并联动窗口模式控件显隐 */
-                    var wrapper = box ? box.querySelector('.play-player-wrapper') : null;
+                    /* 单地址视频无 .play-container（[Video] 与单行 [play]），
+                       包装器始终是 .fc-video 的直接父级，用 closest 定位才都能命中 */
+                    var wrapper = el.closest('.play-player-wrapper');
                     var updatePortraitCompact = function () {
                         var compact = el.classList.contains('vc-portrait')
                             && !art.fullscreen && !art.fullscreenWeb;
