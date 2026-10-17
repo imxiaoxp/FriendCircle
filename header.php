@@ -14,7 +14,7 @@
                 'author'   => _t('%s 的动态'),
             ), '', ' - '); ?><?php $this->options->title(); ?></title>
     <link rel="icon" type="image/png" href="<?php $this->options->themeUrl('assets/img/favicon.png'); ?>">
-    <link rel="stylesheet" href="<?php $this->options->themeUrl('assets/lib/aplayer.min.css'); ?>">
+    <link rel="stylesheet" href="<?php $this->options->themeUrl('assets/lib/aplayer.min.css'); ?>?v=<?php echo filemtime(__DIR__ . '/assets/lib/aplayer.min.css'); ?>">
     <script>
         (function () {
             var mode = <?php echo json_encode($this->options->fcDarkMode ?: 'auto'); ?>;
@@ -35,13 +35,13 @@
     <link rel="stylesheet" href="<?php $this->options->themeUrl('style.min.css'); ?>?v=<?php echo filemtime(__DIR__ . '/style.min.css'); ?>">
     <?php if (!empty($GLOBALS['fcPrism'])): ?>
         <!-- Prism 代码高亮（本地引用：核心 + 自动加载语言 + 行号 + 工具栏复制） -->
-        <link rel="stylesheet" href="<?php $this->options->themeUrl('assets/lib/prism/plugins/line-numbers/prism-line-numbers.min.css'); ?>">
-        <script src="<?php $this->options->themeUrl('assets/lib/prism/components/prism-core.min.js'); ?>"></script>
-        <script src="<?php $this->options->themeUrl('assets/lib/prism/plugins/autoloader/prism-autoloader.min.js'); ?>"></script>
+        <link rel="stylesheet" href="<?php $this->options->themeUrl('assets/lib/prism/plugins/line-numbers/prism-line-numbers.min.css'); ?>?v=<?php echo filemtime(__DIR__ . '/assets/lib/prism/plugins/line-numbers/prism-line-numbers.min.css'); ?>">
+        <script src="<?php $this->options->themeUrl('assets/lib/prism/components/prism-core.min.js'); ?>?v=<?php echo filemtime(__DIR__ . '/assets/lib/prism/components/prism-core.min.js'); ?>"></script>
+        <script src="<?php $this->options->themeUrl('assets/lib/prism/plugins/autoloader/prism-autoloader.min.js'); ?>?v=<?php echo filemtime(__DIR__ . '/assets/lib/prism/plugins/autoloader/prism-autoloader.min.js'); ?>"></script>
         <script>Prism.plugins.autoloader.languages_path = '<?php $this->options->themeUrl('assets/lib/prism/components/'); ?>';</script>
-        <script src="<?php $this->options->themeUrl('assets/lib/prism/plugins/line-numbers/prism-line-numbers.min.js'); ?>"></script>
-        <script src="<?php $this->options->themeUrl('assets/lib/prism/plugins/toolbar/prism-toolbar.min.js'); ?>"></script>
-        <script src="<?php $this->options->themeUrl('assets/lib/prism/plugins/copy-to-clipboard/prism-copy-to-clipboard.min.js'); ?>"></script>
+        <script src="<?php $this->options->themeUrl('assets/lib/prism/plugins/line-numbers/prism-line-numbers.min.js'); ?>?v=<?php echo filemtime(__DIR__ . '/assets/lib/prism/plugins/line-numbers/prism-line-numbers.min.js'); ?>"></script>
+        <script src="<?php $this->options->themeUrl('assets/lib/prism/plugins/toolbar/prism-toolbar.min.js'); ?>?v=<?php echo filemtime(__DIR__ . '/assets/lib/prism/plugins/toolbar/prism-toolbar.min.js'); ?>"></script>
+        <script src="<?php $this->options->themeUrl('assets/lib/prism/plugins/copy-to-clipboard/prism-copy-to-clipboard.min.js'); ?>?v=<?php echo filemtime(__DIR__ . '/assets/lib/prism/plugins/copy-to-clipboard/prism-copy-to-clipboard.min.js'); ?>"></script>
     <?php endif; ?>
     <?php /* commentReply 置空禁用核心 TypechoComment 回复脚本（评论走主题内联容器）；传 0 会输出损坏的 <script src="0"> */ ?>
     <?php $this->header('commentReply='); ?>
@@ -133,10 +133,23 @@
         </div>
 
         <div class="fc-profile">
-            <div class="fc-profile-row">
-                <h4><?php echo htmlspecialchars(fcOption($this->options, 'fcNickname', $this->options->title), ENT_QUOTES, 'UTF-8'); ?></h4>
-                <a href="javascript:;"><img src="<?php echo htmlspecialchars(fcHeaderAvatar($this->options), ENT_QUOTES, 'UTF-8'); ?>"
-                        alt="<?php echo htmlspecialchars(fcOption($this->options, 'fcNickname', $this->options->title), ENT_QUOTES, 'UTF-8'); ?>"></a>
+            <?php
+            $fcNick = htmlspecialchars(fcOption($this->options, 'fcNickname', $this->options->title), ENT_QUOTES, 'UTF-8');
+            $fcAvatar = htmlspecialchars(fcHeaderAvatar($this->options), ENT_QUOTES, 'UTF-8');
+            list($fcAvPre, $fcAvSuf) = fcAvatarBase($this->options);
+            $fcRowAttrs = ' data-default-name="' . $fcNick . '" data-default-avatar="' . $fcAvatar . '"'
+                . ' data-avatar-pre="' . htmlspecialchars($fcAvPre, ENT_QUOTES, 'UTF-8') . '"'
+                . ' data-avatar-suf="' . htmlspecialchars($fcAvSuf, ENT_QUOTES, 'UTF-8') . '"';
+            if ($this->user->hasLogin()) {
+                $fcRowAttrs .= ' data-login-name="' . htmlspecialchars($this->user->screenName, ENT_QUOTES, 'UTF-8') . '"'
+                    . ' data-login-mail="' . htmlspecialchars((string) $this->user->mail, ENT_QUOTES, 'UTF-8') . '"'
+                    . ' data-login-avatar="' . htmlspecialchars(fcMailAvatar($this->user->mail, $this->options), ENT_QUOTES, 'UTF-8') . '"';
+            }
+            ?>
+            <div class="fc-profile-row"<?php echo $fcRowAttrs; ?>>
+                <h4><?php echo $fcNick; ?></h4>
+                <a href="<?php echo $this->user->hasLogin() ? htmlspecialchars($this->options->adminUrl, ENT_QUOTES, 'UTF-8') : 'javascript:;'; ?>"><img src="<?php echo $fcAvatar; ?>"
+                        alt="<?php echo $fcNick; ?>"></a>
             </div>
             <?php $signature = (string) ($this->options->fcSignature ?? ''); ?>
             <?php if ('' !== $signature): ?>

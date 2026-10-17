@@ -5,14 +5,14 @@
  *
  * @package FriendCircle
  * @author Xiao
- * @version 1.2.0
+ * @version 1.1.1
  * @link https://xiao.cn.mt
  */
 if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 
 /* 主题版本号：控制台横幅显示，与 index.php 头注释 @version 保持一致 */
 if (!defined('FC_VERSION')) {
-    define('FC_VERSION', '1.2.0');
+    define('FC_VERSION', '1.1.1');
 }
 
 // 评论渲染与查询函数集（fcCommentToken / fcInlineCommentsHtml / fcInlineCommentForm 等）
@@ -250,6 +250,28 @@ function fcOption($options, $name, $default = '')
 }
 
 /**
+ * 头像源 URL 模板：[邮箱 hash 前缀, 参数后缀]，供前端拼接评论者头像
+ *
+ * @param mixed $options
+ * @return array{0: string, 1: string}
+ */
+function fcAvatarBase($options)
+{
+    switch (fcOption($options, 'fcAvatarSource', 'lty')) {
+        case 'gravatar':
+            return array('https://gravatar.com/avatar/', '?s=128&r=X&d=mp');
+        case 'cravatar':
+            return array('https://cravatar.com/avatar/', '?s=128&r=X&d=mp');
+        case 'weavatar':
+            return array('https://weavatar.com/avatar/', '?s=128&r=X&d=mp');
+        case 'loli':
+            return array('https://gravatar.loli.net/avatar/', '?s=128&r=X&d=mp');
+        default:
+            return array('https://api.lty.fun/avatar/', '?s=128&r=X');
+    }
+}
+
+/**
  * 按邮箱获取头像 URL
  *
  * @param string $mail
@@ -263,22 +285,8 @@ function fcMailAvatar($mail, $options)
         return $cache[$mail];
     }
     $hash = md5($mail);
-    switch (fcOption($options, 'fcAvatarSource', 'lty')) {
-        case 'gravatar':
-            $url = 'https://gravatar.com/avatar/' . $hash . '?s=128&r=X&d=mp';
-            break;
-        case 'cravatar':
-            $url = 'https://cravatar.com/avatar/' . $hash . '?s=128&r=X&d=mp';
-            break;
-        case 'weavatar':
-            $url = 'https://weavatar.com/avatar/' . $hash . '?s=128&r=X&d=mp';
-            break;
-        case 'loli':
-            $url = 'https://gravatar.loli.net/avatar/' . $hash . '?s=128&r=X&d=mp';
-            break;
-        default:
-            $url = 'https://api.lty.fun/avatar/' . $hash . '?s=128&r=X';
-    }
+    list($prefix, $suffix) = fcAvatarBase($options);
+    $url = $prefix . $hash . $suffix;
     $cache[$mail] = $url;
     return $url;
 }
@@ -784,7 +792,7 @@ function fcMomentHtml($archive, $detail = false)
 
             <div class="fc-card-footer">
                 <div class="fc-card-time">
-                    <a href="<?php echo $permalink; ?>"><span><?php echo $date; ?></span></a>
+                    <a href="<?php echo $permalink; ?>"><span data-time="<?php echo (int) $archive->created; ?>"><?php echo $date; ?></span></a>
                 </div>
                 <div class="fc-card-actions">
                     <!-- 赞/评论按钮默认收起，点击「两个点」展开（首页与详情页一致） -->

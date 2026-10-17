@@ -144,6 +144,20 @@
         function bindAPlayer(ap) {
             if (!ap || ap.fcMutexBound) return;
             ap.fcMutexBound = true;
+            /* APlayer 1.10.1 防御：list.switch 内部高亮 li 前不校验 DOM，
+               同容器二次初始化等场景下 audios 与列表 DOM 失同步，出错自动跳曲
+               （error → 2s 后 skipForward）时会抛 "Cannot read properties of
+               undefined (reading 'classList')"。失同步实例的容器已被接管，
+               switch 中断无实际影响，包守卫避免未捕获错误 */
+            if (ap.list && typeof ap.list.switch === 'function' && !ap.list.fcSafeSwitch) {
+                var rawSwitch = ap.list.switch.bind(ap.list);
+                ap.list.fcSafeSwitch = true;
+                ap.list.switch = function (i) {
+                    try {
+                        return rawSwitch(i);
+                    } catch (err) { /* 容器已失同步，降级忽略 */ }
+                };
+            }
             /* 游离 audio 元素可直接监听原生事件，不依赖在 DOM 中 */
             if (ap.audio && typeof ap.audio.addEventListener === 'function') {
                 ap.audio.addEventListener('play', function () {
@@ -436,6 +450,8 @@
         try {
             localStorage.setItem('fc-commenter', JSON.stringify(info));
         } catch (e) {}
+        /* 实时同步资料区头像/昵称 */
+        fcInitProfile();
     }
 
     /* 更新/创建评论输入框左侧头像（评论接口返回 avatar URL 时调用） */
@@ -790,6 +806,8 @@
         try {
             localStorage.setItem('fc-commenter', JSON.stringify(info));
         } catch (err) {}
+        /* 实时同步资料区头像/昵称 */
+        fcInitProfile();
         ['author', 'mail', 'url'].forEach(function (name) {
             var field = fcPendingForm.querySelector('[name="' + name + '"]');
             if (field) field.value = info[name];
@@ -1275,6 +1293,9 @@
                 if (el.dataset.api) {
                     el.fcApInited = true;
                     fetch(el.dataset.api).then(function (r) { return r.json(); }).then(function (data) {
+                        /* fetch 期间页面可能已 PJAX 离开：容器已脱离文档时放弃构造，
+                           避免产生游离实例（其出错跳曲会操作失同步的列表 DOM） */
+                        if (!el.isConnected) return;
                         var list = Array.isArray(data) ? data : [data];
                         var audio = list.map(function (x) {
                             return {
@@ -1440,10 +1461,97 @@
     }
     window.fcInitMedia = fcInitMedia;
 
+    /* ============ 个人资料区头像/昵称替换 ============ */
+    /* fc-profile-row 默认展示博主信息；优先级：登录用户（PHP 输出 data-login-*） >
+       本地储存的评论者信息（localStorage fc-commenter，头像 = md5(邮箱) 拼头像源模板） > 默认 */
+    function fcInitProfile() {
+        var row = document.querySelector('.fc-profile-row');
+        if (!row) return;
+        var name = '', avatar = '';
+        if (row.dataset.loginMail !== undefined && row.dataset.loginMail !== null) {
+            name = row.dataset.loginName || '';
+            avatar = row.dataset.loginAvatar || '';
+        } else {
+            var info = fcRemembered();
+            if (info.author) {
+                name = info.author;
+                if (info.mail && window.md5 && row.dataset.avatarPre) {
+                    avatar = row.dataset.avatarPre + window.md5(info.mail.toLowerCase()) + row.dataset.avatarSuf;
+                }
+                /* 评论者填写了网站：头像点击新窗口打开；未填写则恢复无操作 */
+                var link = row.querySelector('a');
+                if (link) {
+                    if (info.url) {
+                        link.href = /^https?:\/\//i.test(info.url) ? info.url : 'https://' + info.url;
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                    } else {
+                        link.href = 'javascript:;';
+                        link.removeAttribute('target');
+                        link.removeAttribute('rel');
+                    }
+                }
+            }
+        }
+        if (!name && !avatar) return;
+        if (name) {
+            var h4 = row.querySelector('h4');
+            if (h4) h4.textContent = name;
+        }
+        if (avatar) {
+            var img = row.querySelector('img');
+            if (img && img.src !== avatar) {
+                img.src = avatar;
+                img.alt = name || img.alt;
+            }
+        }
+    }
+    window.fcInitProfile = fcInitProfile;
+
+    /* ============ 发布时间相对化（逻辑参照 WeiBo-X 主题） ============ */
+    /* <60s 刚刚；<30天 N分钟/小时/天前；30天外绝对时间 YYYY-MM-DD HH:mm。
+       PHP 在 .fc-card-time span 上输出 data-time（Unix 秒），文本为服务端日期作 JS 失效兜底；
+       每 30 秒重算一次，页面停留时「刚刚」等自动推进（实时显示） */
+    function fcFormatTime(ts) {
+        var diff = Math.floor(Date.now() / 1000) - ts;
+        if (isNaN(diff) || diff < 0) return '';
+        if (diff < 60) return '刚刚';
+        if (diff < 2592000) {
+            var steps = [
+                { label: '天前', value: 86400 },
+                { label: '小时前', value: 3600 },
+                { label: '分钟前', value: 60 }
+            ];
+            for (var i = 0; i < steps.length; i++) {
+                if (diff >= steps[i].value) return Math.floor(diff / steps[i].value) + steps[i].label;
+            }
+            return Math.floor(diff / 60) + '分钟前';
+        }
+        return new Intl.DateTimeFormat('zh-CN', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', hour12: false
+        }).format(new Date(ts * 1000)).replace(/\//g, '-');
+    }
+    function fcInitTime() {
+        document.querySelectorAll('.fc-card-time span[data-time]').forEach(function (el) {
+            var ts = parseInt(el.getAttribute('data-time'), 10);
+            if (!isNaN(ts) && ts > 0) {
+                var text = fcFormatTime(ts);
+                if (text) el.textContent = text;
+            }
+        });
+    }
+    window.fcInitTime = fcInitTime;
+    setInterval(function () {
+        if (document.querySelector('.fc-card-time span[data-time]')) fcInitTime();
+    }, 30000);
+
     /* ============ 页面级初始化（PJAX 切页后由 PJAX 模块重跑） ============ */
     /* 包含随页面替换而需重新绑定/重扫的部分；document 级委托交互与静态元素
        （顶栏、音乐、浮钮、弹窗、灯箱）均一次性绑定，不在此列 */
     window.fcInitPage = function () {
+        fcInitProfile();
+        fcInitTime();
         fcInitMedia();
         var loadmore = document.getElementById('fc-loadmore');
         if (loadmore) {
@@ -1505,6 +1613,8 @@
                         if (typeof window.loadMeting === 'function') window.loadMeting();
                         // 新卡片节点已并入 document，全文扫描即可（已有语言标注的会跳过）
                         fcAutoDetectCode(document);
+                        // 新卡片发布时间相对化
+                        fcInitTime();
                     })
                     .catch(function () {
                         fcHideSkeleton();

@@ -642,13 +642,13 @@ button {
 
 .fc-likes-list>li {
     display: inline-block;
-    font-size: 14px;
+    font-size: 13px;
     color: var(--thetitle);
 }
 
 .fc-comments {
     width: 100%;
-    font-size: 14px;
+    font-size: 13px;
     padding-top: 5px;
     padding-bottom: 5px;
     border-radius: 4px;
@@ -696,7 +696,7 @@ button {
 
 .fc-comments-more {
     display: block;
-    font-size: 14px;
+    font-size: 13px;
     color: var(--thetitle);
     padding: 4px 10px 8px;
 }
@@ -1678,7 +1678,7 @@ html.lightbox-open body {
 
 /* 统计条也在左下角（与按钮组同侧）时，按钮组整体上移避让（统计条 bottom 24px + 高约 30px + 间距 4px） */
 body.fc-has-counter .fc-float {
-    bottom: 58px;
+    bottom: 54px;
 }
 
 .fc-float-btn {
@@ -2192,7 +2192,7 @@ body.fc-videofs .fc-vc-bar {
 }
 
 .fc-vc-bottom-left {
-    bottom: 24px;
+    bottom: 10px;
     left: 16px;
 }
 
