@@ -1611,6 +1611,9 @@
                         // 重初始化新卡片内的播放器（VideoCollector/APlayer 插件注入的全局函数，未启用时跳过）
                         if (typeof window.initVideoCollectors === 'function') window.initVideoCollectors();
                         if (typeof window.loadMeting === 'function') window.loadMeting();
+                        // 主题短代码播放器（.aplayer / .fc-video）：内建幂等标记可安全重复调用，
+                        // 漏调会导致下拉加载的第二页视频/音频不初始化
+                        if (typeof window.fcInitMedia === 'function') window.fcInitMedia();
                         // 新卡片节点已并入 document，全文扫描即可（已有语言标注的会跳过）
                         fcAutoDetectCode(document);
                         // 新卡片发布时间相对化
