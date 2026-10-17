@@ -2433,7 +2433,7 @@ body.fc-videofs .fc-vc-bar {
 /* [Music]/[Video] 短代码容器；ArtPlayer 需要有高度的挂载点。
    首页卡片播放器会被提取到正文区外独立输出（fc-card-body 直下），
    详情页在正文内（.fc-text），故统一用 .fc-card-body 作用域 */
-/* 播放器包装器：默认 16:9；竖屏视频按真实宽高比自适应，最高约 40vh */
+/* 播放器包装器：默认 16:9；竖屏视频按真实宽高比自适应，最高 300px */
 .fc-card-body .play-player-wrapper {
     position: relative;
     width: 100%;
@@ -2447,7 +2447,7 @@ body.fc-videofs .fc-vc-bar {
 /* 竖屏（app.js 按 videoWidth/videoHeight 加 vc-portrait） */
 .fc-card-body .play-player-wrapper.vc-portrait {
     aspect-ratio: var(--vc-video-ratio, 0.5625);
-    max-width: calc(40vh * var(--vc-video-ratio, 0.5625));
+    max-width: calc(300px * var(--vc-video-ratio, 0.5625));
 }
 
 /* ArtPlayer 容器：填满包装器 */
