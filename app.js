@@ -19,6 +19,40 @@
         });
     }
 
+    /* ============ 清除游客评论信息 ============ */
+    /* fc-commenter 记录游客昵称/邮箱/网址；仅在存在记录时显示按钮，
+       清除后资料区头像/昵称恢复默认（fcInitProfile），按钮自身隐藏 */
+    var forgetBtn = document.getElementById('fc-forget');
+    function fcSyncForgetBtn() {
+        if (!forgetBtn) return;
+        var has = false;
+        try {
+            var raw = localStorage.getItem('fc-commenter');
+            has = !!raw && raw !== '{}' && raw !== 'null';
+        } catch (e) {}
+        forgetBtn.hidden = !has;
+    }
+    if (forgetBtn) {
+        forgetBtn.addEventListener('click', function () {
+            try { localStorage.removeItem('fc-commenter'); } catch (e) {}
+            /* 同步清空页面上已展开/已填充的评论表单游客输入与头像、免弹窗标记，
+               否则表单里仍残留此游客的昵称/邮箱/网址 */
+            document.querySelectorAll('.fc-inline-form').forEach(function (form) {
+                ['author', 'mail', 'url'].forEach(function (name) {
+                    var input = form.querySelector('[name="' + name + '"]');
+                    if (input) input.value = '';
+                });
+                form.removeAttribute('data-has-info');
+                var av = form.querySelector('.fc-inline-avatar');
+                if (av) av.remove();
+            });
+            fcInitProfile();
+            fcInlineMsg(null, '已清除你的个人信息');
+            forgetBtn.hidden = true;
+        });
+        fcSyncForgetBtn();
+    }
+
     /* ============ 滚动联动：顶栏变色 + 返回顶部按钮显隐 ============ */
     /* 顶栏节点经 PJAX 移植保留，封面元素随页面替换——动态查询保证换页后判定仍正确 */
     var topbar = document.getElementById('fc-topbar');
@@ -452,6 +486,8 @@
         } catch (e) {}
         /* 实时同步资料区头像/昵称 */
         fcInitProfile();
+        /* 有游客信息记录后显示「清除游客信息」浮钮 */
+        fcSyncForgetBtn();
     }
 
     /* 更新/创建评论输入框左侧头像（评论接口返回 avatar URL 时调用） */
@@ -713,17 +749,15 @@
                 return;
             }
             var item = form.closest('.fc-card');
-            // 提交成功后回到独立评论状态：清空 parent 与回复提示条
-            var parentInput = form.querySelector('[name="parent"]');
-            if (parentInput) parentInput.value = '';
-            fcShowReplyBar(form, '');
-            // 表单若嵌在评论条目下方，先复位，避免被下方列表整体替换时一并销毁
-            fcResetFormPosition(form);
+            // 表单若嵌在评论条目下方，先复位，避免被下方列表整体替换时一并销毁；
+            // 同时清空回复状态（parent 与提示条）
+            fcCloseReply(form);
             var list = item && item.querySelector('.fc-inline-list');
             if (typeof data.list === 'string' && list) {
                 list.innerHTML = data.list;
             }
             fcSyncZanp(item);
+            // 评论成功：收起评论框（fcCloseReply 已置 hidden），toast 反馈
             fcInlineMsg(form, '评论成功');
         }).catch(function () {
             fcInlineMsg(form, '网络错误，请稍后重试', true);
@@ -808,6 +842,8 @@
         } catch (err) {}
         /* 实时同步资料区头像/昵称 */
         fcInitProfile();
+        /* 有游客信息记录后显示「清除游客信息」浮钮 */
+        fcSyncForgetBtn();
         ['author', 'mail', 'url'].forEach(function (name) {
             var field = fcPendingForm.querySelector('[name="' + name + '"]');
             if (field) field.value = info[name];
@@ -1490,6 +1526,16 @@
                         link.removeAttribute('target');
                         link.removeAttribute('rel');
                     }
+                }
+            } else {
+                /* 无游客记录（含「清除游客信息」后）：即时恢复默认昵称/头像 */
+                name = row.dataset.defaultName || '';
+                avatar = row.dataset.defaultAvatar || '';
+                var link = row.querySelector('a');
+                if (link) {
+                    link.href = 'javascript:;';
+                    link.removeAttribute('target');
+                    link.removeAttribute('rel');
                 }
             }
         }
