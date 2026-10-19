@@ -1899,9 +1899,17 @@ pre[class*=language-].line-numbers {
     padding-left: 0 !important;
 }
 
+/* 行号列独立：代码整体右移，与分隔线留出间距（插件默认 left:-3.8em 布局已被覆盖） */
+pre[class*=language-].line-numbers>code {
+    padding-left: 62px !important;
+}
+
 .line-numbers-rows {
     left: 15px !important;
     top: 5px !important;
+    width: 32px !important;
+    padding-right: 8px !important;
+    text-align: right !important;
     border-right: 1px solid rgba(255, 255, 255, .1) !important;
 }
 
@@ -2447,8 +2455,12 @@ body.fc-videofs .fc-vc-bar {
 /* 竖屏（app.js 按 videoWidth/videoHeight 加 vc-portrait） */
 .fc-card-body .play-player-wrapper.vc-portrait {
     aspect-ratio: var(--vc-video-ratio, 0.5625);
-    max-width: calc(300px * var(--vc-video-ratio, 0.5625));
+    max-width: calc(280px * var(--vc-video-ratio, 0.5625));
+    @media (max-width: 768px) {
+        max-height: 200px;
+    }
 }
+
 
 /* ArtPlayer 容器：填满包装器 */
 .fc-card-body .fc-video {

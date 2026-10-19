@@ -1699,8 +1699,25 @@
 
         fcSyncFulltextButtons();
         fcInitLikeState();
+        fcEnableLineNumbers(document);
         fcAutoDetectCode(document);
     };
+
+    /* ============ Prism 行号：line-numbers 插件仅处理带 line-numbers 类的块 ============ */
+    // 插件 CSS/JS 已在 header 引入、样式已适配，但无人给 pre 补类导致行号不显示。
+    // 这里统一给正文代码块开启；显式标注语言的块可能已被 Prism 核心的
+    // DOMContentLoaded 高亮先处理（时序早于本主题初始化），需补高亮一次生成行号
+    function fcEnableLineNumbers(root) {
+        if (!window.Prism) return;
+        (root || document).querySelectorAll('.fc-detail-text pre > code, .fc-text pre > code').forEach(function (code) {
+            var pre = code.parentElement;
+            if (!pre || pre.classList.contains('line-numbers')) return;
+            pre.classList.add('line-numbers');
+            if (/(^|\s)language-\w+/.test(code.className) && !pre.querySelector('.line-numbers-rows')) {
+                Prism.highlightElement(code);
+            }
+        });
+    }
 
     /* ============ Prism：未标注语言的代码块自动识别语言 ============ */
     // Prism 本身无语言检测；autoloader 只按需加载已标注语言。
