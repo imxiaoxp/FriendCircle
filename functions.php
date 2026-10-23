@@ -5,14 +5,14 @@
  *
  * @package FriendCircle
  * @author Xiao
- * @version 1.1.1
+ * @version 1.1.2
  * @link https://xiao.cn.mt
  */
 if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 
 /* 主题版本号：控制台横幅显示，与 index.php 头注释 @version 保持一致 */
 if (!defined('FC_VERSION')) {
-    define('FC_VERSION', '1.1.1');
+    define('FC_VERSION', '1.1.2');
 }
 
 // 评论渲染与查询函数集（fcCommentToken / fcInlineCommentsHtml / fcInlineCommentForm 等）
@@ -106,6 +106,20 @@ function themeConfig($form)
         _t('站内点击链接不整页刷新，切换后自动重载 APlayer / VideoCollector 播放器与代码高亮；背景音乐跨页持续播放')
     ));
 
+    $form->addInput(new Typecho_Widget_Helper_Form_Element_Radio(
+        'fcLocation',
+        array(
+            '1' => _t('开启'),
+            '0' => _t('关闭'),
+        ),
+        '0',
+        _t('插入位置按钮'),
+        _t('开启后文章编辑器工具栏显示「📍 插入位置」按钮，点击把编辑者 IP 归属地（如 江西·赣州）填入「所在位置」字段；首次开启自动下载 ip2region 数据库到主题 assets/ipdb/ 目录（IPv4 约 11MB + IPv6 约 37MB，境内外多源自动切换）')
+    ));
+
+    /* 数据库下载不放在保存流程里：下载耗时可达数分钟，PHP max_execution_time（默认 30s）
+       会中断保存请求导致设置与下载双双失败且无任何提示。改为 admin 页 footer 注入异步触发 */
+
     $form->addInput(new Typecho_Widget_Helper_Form_Element_Textarea(
         'fcPjaxReload',
         null,
@@ -196,6 +210,29 @@ function themeConfig($form)
         _t('统计时区'),
         _t('访问统计的"今天/昨天"按此时区翻转，默认北京时间（不受服务器时区影响）')
     ));
+}
+
+/**
+ * admin 页脚注入：自动触发 IP 归属地数据库后台下载
+ *
+ * functions.php 仅在主题设置页 / 文章编辑页等 admin 上下文被加载，
+ * 此处注册 admin/footer.php 的 begin 钩子，库缺失时向页面注入一次性
+ * fetch（ipdb-download.php），下载在独立请求中完成，不阻塞保存。
+ */
+if (defined('__TYPECHO_ADMIN__')) {
+    \Typecho\Plugin::factory('admin/footer.php')->begin = 'fcIpDbAutoDownload';
+}
+
+function fcIpDbAutoDownload()
+{
+    if ('1' !== (string) fcOption(\Widget\Options::alloc(), 'fcLocation', '0')) {
+        return;
+    }
+    require_once __DIR__ . '/ipdb.php';
+    if (FC_IpDb::exists('v4') && FC_IpDb::exists('v6')) {
+        return;
+    }
+    FC_IpDb::injectDownloader();
 }
 
 /**

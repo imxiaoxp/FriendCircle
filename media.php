@@ -15,6 +15,7 @@ if (!defined('__TYPECHO_ROOT_DIR__')) {
  *   前台渲染：fcMomentHtml() / page.php 输出正文前调用 FC_Media::parse()，
  *             不走 contentEx 钩子（核心在渲染前已预取 excerpt，主题钩子注册晚于首次渲染）
  *   编辑器按钮：admin/write-post.php、admin/write-page.php 的 bottom 钩子注入
+ *   （插入音乐 / 插入视频 / 插入位置——位置走 location.php 解析 IPLocation 插件归属地）
  *   前端初始化：assets/lib/aplayer.min.js、artplayer.min.js + app.js 的 fcInitMedia()
  */
 class FC_Media
@@ -198,9 +199,15 @@ class FC_Media
         return $out . '</div></div>';
     }
 
-    /** 后台编辑器按钮：插入音乐 / 插入视频（bottom 钩子，$post 为内容编辑组件） */
+    /** 后台编辑器按钮：插入音乐 / 插入视频 / 插入位置（bottom 钩子，$post 为内容编辑组件） */
     public static function editorButton($post = null)
     {
+        /* 「插入位置」端点：受主题设置「插入位置按钮」开关控制（默认关，未开启不下发端点与按钮） */
+        if ('1' === (string) fcOption(\Widget\Options::alloc(), 'fcLocation', '0')) {
+            echo '<script>window.fcLocationEndpoint = '
+                . json_encode(\Widget\Options::alloc()->themeUrl . '/location.php')
+                . ';</script>';
+        }
         echo <<<'EOT'
 <script>
 (function () {
@@ -278,6 +285,34 @@ class FC_Media
         row.appendChild(li);
     }
 
+    /* 「插入位置」：查询编辑者 IP 归属地并填充「所在位置」自定义字段 */
+    function makeLocationButton(title, label) {
+        var li = document.createElement('li');
+        li.className = 'wmd-button';
+        li.title = title;
+        li.innerHTML = '<span style="display:flex;align-items:center;justify-content:center;height:20px;font-size:14px;line-height:20px;">' + label + '</span>';
+        li.onclick = function () {
+            if (!window.fcLocationEndpoint) { alert('位置接口不可用'); return; }
+            li.style.opacity = '.5';
+            fetch(window.fcLocationEndpoint, { method: 'POST' })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    li.style.opacity = '';
+                    if (data.error) { alert('获取位置失败：' + data.error); return; }
+                    if (!data.location) { alert('无法识别当前位置（内网地址或归属地未收录）'); return; }
+                    var input = document.querySelector('input[name="fields[location]"]');
+                    if (!input) { alert('未找到「所在位置」字段'); return; }
+                    input.value = data.location;
+                    li.title = title + '（上次插入：' + data.location + '）';
+                })
+                .catch(function () {
+                    li.style.opacity = '';
+                    alert('请求失败，请重试');
+                });
+        };
+        row.appendChild(li);
+    }
+
     makeButton('插入音乐（APlayer）', '♪', [
         { label: 'Meting 歌曲/歌单链接（选填，如 https://api.injahow.cn/meting/?type=song&id=xxx）', required: false },
         { label: '歌曲名', required: false },
@@ -304,6 +339,10 @@ class FC_Media
         var lines = v[0].split(/\s*\n\s*/).filter(function (s) { return s; });
         return '[play]\n' + lines.join('\n') + '\n[/play]';
     });
+
+    if (window.fcLocationEndpoint) {
+        makeLocationButton('插入当前位置（IP 归属地，填充「所在位置」字段）', '📍');
+    }
     }
 
     /* 编辑器工具栏由 pagedown.js 在 DOM ready 中构建，按钮注入须晚于其完成；
