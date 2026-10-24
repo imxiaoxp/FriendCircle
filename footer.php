@@ -33,7 +33,7 @@ if (($this->options->fcCounterEnabled ?? '0') == '1' && ($this->options->fcCount
         </button>
     <?php endif; ?>
     <?php /* 清除游客评论信息（localStorage fc-commenter + 服务端 remember cookie）：有记录才显示，显隐由 app.js 控制 */ ?>
-    <button class="fc-float-btn" id="fc-forget" type="button" aria-label="清除你的个人信息" title="清除你的个人信息" hidden data-forget-url="<?php $this->options->themeUrl('forget.php'); ?>">
+    <button class="fc-float-btn" id="fc-forget" type="button" aria-label="清除你的个人信息" title="清除你的个人信息" data-forget-url="<?php $this->options->themeUrl('forget.php'); ?>" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
             <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -88,7 +88,7 @@ if (($this->options->fcCounterEnabled ?? '0') == '1' && ($this->options->fcCount
     </form>
 </div>
 <script>window.fcPjaxEnabled = <?php echo (int) fcOption($this->options, 'fcPjax', '0') ? 'true' : 'false'; ?>;</script>
-<script>console.log("\n %c FriendCircle v<?php echo FC_VERSION; ?> %c https://github.com/imxiaoxp/FriendCircle \n", "color:#fadfa3;background:#030307;padding:5px 0;font-weight:bold;", "color:#fff;background:#4a5b6a;padding:5px 0;");</script>
+<script>console.log("\n %c FriendCircle %c v<?php echo FC_VERSION; ?> %c https://github.com/imxiaoxp/FriendCircle \n", "color: #fff; background: #5f5f5f", "color: #fff; background: #4bc729", "");</script>
 <?php
 /* 后台「PJAX 自定义重载函数」：按行拆分，去掉空行与 // 注释行 */
 $_fcReloadLines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) fcOption($this->options, 'fcPjaxReload', ''))), function ($l) {
