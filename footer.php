@@ -32,8 +32,8 @@ if (($this->options->fcCounterEnabled ?? '0') == '1' && ($this->options->fcCount
             </svg>
         </button>
     <?php endif; ?>
-    <?php /* 清除游客评论信息（localStorage fc-commenter）：有记录才显示，显隐由 app.js 控制 */ ?>
-    <button class="fc-float-btn" id="fc-forget" type="button" aria-label="清除游客信息" title="清除游客信息" hidden>
+    <?php /* 清除游客评论信息（localStorage fc-commenter + 服务端 remember cookie）：有记录才显示，显隐由 app.js 控制 */ ?>
+    <button class="fc-float-btn" id="fc-forget" type="button" aria-label="清除你的个人信息" title="清除你的个人信息" hidden data-forget-url="<?php $this->options->themeUrl('forget.php'); ?>">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
             <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />

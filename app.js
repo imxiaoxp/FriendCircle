@@ -20,21 +20,33 @@
     }
 
     /* ============ 清除游客评论信息 ============ */
-    /* fc-commenter 记录游客昵称/邮箱/网址；仅在存在记录时显示按钮，
-       清除后资料区头像/昵称恢复默认（fcInitProfile），按钮自身隐藏 */
+    /* 游客身份记忆：localStorage fc-commenter 优先，回退 Typecho 原生评论者记忆 cookie。
+       仅在存在记录时显示按钮，清除后两者一并删除，资料区头像/昵称恢复默认（fcInitProfile） */
     var forgetBtn = document.getElementById('fc-forget');
     function fcSyncForgetBtn() {
         if (!forgetBtn) return;
         var has = false;
         try {
-            var raw = localStorage.getItem('fc-commenter');
-            has = !!raw && raw !== '{}' && raw !== 'null';
+            has = !!fcRemembered().author;
         } catch (e) {}
         forgetBtn.hidden = !has;
     }
     if (forgetBtn) {
         forgetBtn.addEventListener('click', function () {
             try { localStorage.removeItem('fc-commenter'); } catch (e) {}
+            /* 服务端删除记忆 cookie（含 JS 不可见的 HttpOnly，由 forget.php 下发过期
+               Set-Cookie）；失败时退回 JS 本地删除可见部分，不影响后续本地清理 */
+            try {
+                var forgetUrl = forgetBtn.getAttribute('data-forget-url');
+                if (forgetUrl) {
+                    fetch(forgetUrl, { method: 'POST', credentials: 'same-origin' })
+                        .catch(fcDropRememberCookies);
+                } else {
+                    fcDropRememberCookies();
+                }
+            } catch (e) {
+                fcDropRememberCookies();
+            }
             /* 同步清空页面上已展开/已填充的评论表单游客输入与头像、免弹窗标记，
                否则表单里仍残留此游客的昵称/邮箱/网址 */
             document.querySelectorAll('.fc-inline-form').forEach(function (form) {
@@ -467,16 +479,79 @@
         }, isError ? 3000 : 2500);
     }
 
+    /* 游客记忆有效期 30 天（与 Typecho 原生评论者记忆 cookie 一致），每次评论重新计时 */
+    var FC_REMEMBER_TTL = 30 * 24 * 3600 * 1000;
+
     function fcRemembered() {
+        var info = {};
         try {
-            return JSON.parse(localStorage.getItem('fc-commenter') || '{}') || {};
-        } catch (e) {
-            return {};
+            info = JSON.parse(localStorage.getItem('fc-commenter') || '{}') || {};
+        } catch (e) {}
+        /* 超过 30 天（或无时间戳的旧记录）视为过期：移除并回退 cookie；
+           cookie 由服务端滑动续期，两侧时长保持一致 */
+        if (info.author && (!info.ts || Date.now() - info.ts > FC_REMEMBER_TTL)) {
+            try { localStorage.removeItem('fc-commenter'); } catch (e) {}
+            info = {};
         }
+        /* 本地无记录时回退读取 Typecho 原生评论者记忆 cookie（30 天有效期，
+           评论成功后由服务端写入；cookie 名带 md5(rootUrl) 前缀，故用后缀匹配） */
+        if (!info.author) {
+            fcRememberCookies().forEach(function (c) {
+                if (!info[c.field]) info[c.field] = c.value;
+            });
+        }
+        return info;
+    }
+
+    /* 扫描 JS 可见的原生评论者记忆 cookie（HttpOnly 对 JS 不可见，删不到也读不到），
+       返回 [{ name: 完整 cookie 名, field: author/mail/url, value: 解码后的值 }] */
+    function fcRememberCookies() {
+        var out = [];
+        try {
+            document.cookie.split(';').forEach(function (part) {
+                var eq = part.indexOf('=');
+                if (eq < 0) return;
+                var name = part.slice(0, eq).trim();
+                if (!name) return;
+                ['author', 'mail', 'url'].forEach(function (field) {
+                    var suffix = '__typecho_remember_' + field;
+                    if (name === suffix || name.slice(-suffix.length) === suffix) {
+                        var value = part.slice(eq + 1);
+                        try { value = decodeURIComponent(value); } catch (err) {}
+                        out.push({ name: name, field: field, value: value });
+                    }
+                });
+            });
+        } catch (e) {}
+        return out;
+    }
+
+    /* JS 侧尽力删除可见的记忆 cookie：真实 cookie 名带 md5(rootUrl) 前缀，
+       按扫描到的完整名删除；Typecho 写入时显式带 Domain=主机名，需带/不带
+       domain 各删一次；path 依部署目录而定（默认 /），逐级尝试覆盖子目录部署。
+       HttpOnly cookie 对本方法不可见，由 forget.php 服务端下发过期指令兜底 */
+    function fcDropRememberCookies() {
+        try {
+            var paths = ['/'];
+            var segs = location.pathname.split('/').filter(Boolean);
+            segs.pop();
+            segs.forEach(function (seg, i) {
+                paths.push('/' + segs.slice(0, i + 1).join('/') + '/');
+            });
+            fcRememberCookies().forEach(function (c) {
+                paths.forEach(function (p) {
+                    document.cookie = c.name +
+                        '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=' + p;
+                    document.cookie = c.name +
+                        '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=' + p +
+                        '; domain=' + location.hostname;
+                });
+            });
+        } catch (e) {}
     }
 
     function fcSaveCommenter(form) {
-        var info = {};
+        var info = { ts: Date.now() };
         ['author', 'mail', 'url'].forEach(function (name) {
             var input = form.querySelector('[name="' + name + '"]');
             if (input && input.value.trim()) info[name] = input.value.trim();
@@ -827,7 +902,8 @@
         var info = {
             author: modal.querySelector('[name="author"]').value.trim(),
             mail: modal.querySelector('[name="mail"]').value.trim(),
-            url: modal.querySelector('[name="url"]').value.trim()
+            url: modal.querySelector('[name="url"]').value.trim(),
+            ts: Date.now()
         };
         if (!info.author) {
             modal.querySelector('[name="author"]').focus();
@@ -1499,7 +1575,8 @@
 
     /* ============ 个人资料区头像/昵称替换 ============ */
     /* fc-profile-row 默认展示博主信息；优先级：登录用户（PHP 输出 data-login-*） >
-       本地储存的评论者信息（localStorage fc-commenter，头像 = md5(邮箱) 拼头像源模板） > 默认 */
+       评论者信息（fcRemembered：localStorage fc-commenter 优先，回退 Typecho 原生记忆 cookie；
+       头像 = md5(邮箱) 拼头像源模板） > 默认 */
     function fcInitProfile() {
         var row = document.querySelector('.fc-profile-row');
         if (!row) return;
