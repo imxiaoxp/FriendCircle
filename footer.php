@@ -82,7 +82,7 @@ if (($this->options->fcCounterEnabled ?? '0') == '1' && ($this->options->fcCount
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
-        <input class="fc-search-input" type="text" name="s" placeholder="<?php _e('搜索文章...'); ?>"
+        <input class="fc-search-input" type="text" name="s" placeholder="<?php _e('搜索动态...'); ?>"
             autocomplete="off" maxlength="100">
         <button class="fc-search-close" type="button" aria-label="关闭">&times;</button>
     </form>

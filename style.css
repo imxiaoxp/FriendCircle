@@ -735,20 +735,30 @@ button {
     color: var(--textqh);
     border-radius: 4px;
     padding: 6px 10px;
-    font-size: 14px;
-    line-height: 1.4;
+    font-size: 13px;
+    line-height: 18px;
+}
+
+/* 输入框聚焦时边框高亮为主题绿（微信绿 #09c362），暗色模式随变量自动适配 */
+.fc-inline-input:focus {
+    border-color: var(--theme);
+    outline: none;
 }
 
 .fc-inline-input::placeholder {
     color: var(--texths);
 }
 
-/* 评论输入框自适应高度：初始 1 行，随内容长高，超出上限后内部滚动 */
+/* 评论输入框自适应高度：初始 1 行，随内容长高，超出上限后内部滚动。
+   上下 padding 7px + 行高 18px = 32px 内容区，与 34px 总高（含上下边框）精确匹配，
+   单行时文字垂直居中不偏上 */
 textarea.fc-inline-input {
     resize: none;
     overflow-y: auto;
     min-height: 34px;
     max-height: 140px;
+    padding-top: 7px;
+    padding-bottom: 7px;
     transition: height .1s ease;
 }
 
@@ -1666,9 +1676,11 @@ html.lightbox-open body {
 }
 
 /* ============ 左下角悬浮按钮组（明暗切换 / 返回顶部） ============ */
+/* 贴内容区（fc-page，550px 居中柱）左缘外侧 16px（40px 按钮宽 + 16px 间距）；
+   窄视口下计算值为负时回退视口左缘 16px，与原先一致 */
 .fc-float {
     position: fixed;
-    left: 16px;
+    left: max(16px, calc((100% - 550px) / 2 - 56px));
     bottom: 24px;
     z-index: 9;
     display: flex;
