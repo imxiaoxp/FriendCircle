@@ -5,14 +5,14 @@
  *
  * @package FriendCircle
  * @author Xiao
- * @version 1.1.2
+ * @version 1.1.3
  * @link https://xiao.cn.mt
  */
 if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 
 /* 主题版本号：控制台横幅显示，与 index.php 头注释 @version 保持一致 */
 if (!defined('FC_VERSION')) {
-    define('FC_VERSION', '1.1.2');
+    define('FC_VERSION', '1.1.3');
 }
 
 // 评论渲染与查询函数集（fcCommentToken / fcInlineCommentsHtml / fcInlineCommentForm 等）
@@ -119,6 +119,17 @@ function themeConfig($form)
 
     /* 数据库下载不放在保存流程里：下载耗时可达数分钟，PHP max_execution_time（默认 30s）
        会中断保存请求导致设置与下载双双失败且无任何提示。改为 admin 页 footer 注入异步触发 */
+
+    $form->addInput(new Typecho_Widget_Helper_Form_Element_Radio(
+        'fcVideoAuto',
+        array(
+            '1' => _t('开启'),
+            '0' => _t('关闭'),
+        ),
+        '1',
+        _t('视频自动播放'),
+        _t('默认开启：可视范围内的视频自动静音播放，滚出可视范围自动暂停。关闭后点击播放器静音播放（一次性蒙版）。播放中点击播放器进入灯箱（有声、带原生控件），关闭灯箱后回到容器继续静音播放')
+    ));
 
     $form->addInput(new Typecho_Widget_Helper_Form_Element_Textarea(
         'fcPjaxReload',

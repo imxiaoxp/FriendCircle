@@ -313,7 +313,7 @@ class FC_Media
         row.appendChild(li);
     }
 
-    makeButton('插入音乐（APlayer）', '♪', [
+    makeButton('插入音乐（APlayer）', '♫', [
         { label: 'Meting 歌曲/歌单链接（选填，如 https://api.injahow.cn/meting/?type=song&id=xxx）', required: false },
         { label: '歌曲名', required: false },
         { label: '歌手', required: false },

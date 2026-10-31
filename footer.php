@@ -88,6 +88,7 @@ if (($this->options->fcCounterEnabled ?? '0') == '1' && ($this->options->fcCount
     </form>
 </div>
 <script>window.fcPjaxEnabled = <?php echo (int) fcOption($this->options, 'fcPjax', '0') ? 'true' : 'false'; ?>;</script>
+<script>window.fcVideoAuto = <?php echo (int) fcOption($this->options, 'fcVideoAuto', '1') ? 'true' : 'false'; ?>;</script>
 <script>console.log("\n %c FriendCircle %c v<?php echo FC_VERSION; ?> %c https://github.com/imxiaoxp/FriendCircle \n", "color: #fff; background: #5f5f5f", "color: #fff; background: #4bc729", "");</script>
 <?php
 /* 后台「PJAX 自定义重载函数」：按行拆分，去掉空行与 // 注释行 */

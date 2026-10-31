@@ -749,9 +749,8 @@ button {
     color: var(--texths);
 }
 
-/* 评论输入框自适应高度：初始 1 行，随内容长高，超出上限后内部滚动。
-   上下 padding 7px + 行高 18px = 32px 内容区，与 34px 总高（含上下边框）精确匹配，
-   单行时文字垂直居中不偏上 */
+/* 评论输入框自适应高度：初始 1 行随内容长高、超上限内部滚动；
+   上下 padding 7px + 行高 18px 与 34px 总高精确匹配，单行文字垂直居中 */
 textarea.fc-inline-input {
     resize: none;
     overflow-y: auto;
@@ -992,10 +991,6 @@ textarea.fc-inline-input {
     padding: 6px 10px 10px;
 }
 
-[data-theme="dark"] .fc-inline-send {
-    color: #fff;
-}
-
 /* 访客信息弹窗 */
 .fc-guest-modal {
     position: fixed;
@@ -1054,10 +1049,6 @@ textarea.fc-inline-input {
 
 .fc-guest-ok {
     background: var(--theme);
-    color: #fff;
-}
-
-[data-theme="dark"] .fc-guest-ok {
     color: #fff;
 }
 
@@ -1350,7 +1341,7 @@ html.lightbox-open body {
     align-items: center;
     min-width: 0;
     background-color: rgba(200, 200, 200, .2);
-    border-radius: 20px;
+    border-radius: 8px;
     padding: 2px 4px;
     transition: background-color .2s ease;
 }
@@ -1963,15 +1954,241 @@ pre[class*=language-].line-numbers>code {
 }
 
 /* ============ APlayer 音乐播放器 / VideoCollector 视频播放器 ============ */
-/* 主题 CSS 先于插件 CSS 加载，同权重会被覆盖，加 .fc-card-body 提升特异性 */
-.fc-card-body .aplayer,
+/* 主题 CSS 先于插件 CSS 加载，同权重会被覆盖，加 .fc-card-body 提升特异性；
+   .aplayer 的 margin 由文件尾规则统一为 8px 0 */
 .fc-card-body .play-container {
     margin: 8px 0 4px;
 }
 
-.fc-card-body .play-container .play-player-wrapper {
+/* ---- APlayer 极简化：封面模糊背景 + 右侧固定播放键，控制条整体移除 ---- */
+/* 播放器圆角 8px；最大宽度 370px（body 为 100% 子元素随之受限，歌单/歌词区整体变窄） */
+.fc-card-body .aplayer {
     border-radius: 8px;
+    max-width: 370px;
+}
+
+/* 歌名/歌词白色 + 阴影：模糊封面上保持对比度；
+   官方歌名元素为 .aplayer-title（无 color，继承主题文本色），必须显式覆盖亮暗两态 */
+.fc-card-body .aplayer .aplayer-info .aplayer-music .aplayer-title,
+[data-theme="dark"] .fc-card-body .aplayer .aplayer-info .aplayer-music .aplayer-title {
+    color: #fff !important;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, .5);
+}
+
+/* 播放器 body 内文字统一白色，不随明暗主题切换（模糊封面背景恒定） */
+.fc-card-body .aplayer .aplayer-info .aplayer-music .aplayer-author,
+[data-theme="dark"] .fc-card-body .aplayer .aplayer-info .aplayer-music .aplayer-author {
+    color: #fff !important;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, .5);
+}
+
+.fc-card-body .aplayer .aplayer-lrc p {
+    color: #fff;
+    text-shadow: 0 1px 5px rgba(0, 0, 0, .7), 0 0 2px rgba(0, 0, 0, .4);
+}
+
+[data-theme="dark"] .fc-card-body .aplayer .aplayer-lrc p {
+    color: #fff !important;
+}
+
+/* 歌名行浮于歌词层之上；移除官方歌词区负 margin（上提 10px 会盖住歌名行） */
+.fc-card-body .aplayer .aplayer-music {
+    position: relative;
+    z-index: 2;
+}
+
+.fc-card-body .aplayer .aplayer-lrc {
+    margin: 0;
+}
+
+/* 背景层：.aplayer-body::before 取当前曲目封面（app.js 经 --fc-apidata 下发）模糊铺满，
+   scale 放大消除模糊边缘白晕；内容层抬 z-index 压在背景之上 */
+.fc-card-body .aplayer .aplayer-body {
     overflow: hidden;
+    padding-right: 58px;
+}
+
+.fc-card-body .aplayer .aplayer-body::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-image: var(--fc-apidata, none);
+    background-size: cover;
+    background-position: center;
+    filter: blur(16px) brightness(.92);
+    transform: scale(1.2);
+    pointer-events: none;
+}
+
+.fc-card-body .aplayer .aplayer-pic,
+.fc-card-body .aplayer .aplayer-info,
+.fc-card-body .aplayer .aplayer-lrc,
+.fc-card-body .aplayer .aplayer-play,
+.fc-card-body .aplayer .aplayer-pause {
+    z-index: 1;
+}
+
+/* 封面不可点击（点击穿透到 body，仅右侧按钮控制播放暂停） */
+.fc-card-body .aplayer .aplayer-pic {
+    pointer-events: none;
+}
+
+/* 控制条（进度/时间/音量/循环）移除；换歌与播完即止由 loop:none 控制 */
+.fc-card-body .aplayer .aplayer-controller {
+    display: none !important;
+}
+
+/* 歌单模式下 info 区底部分隔线（官方 border-bottom）移除 */
+.aplayer.aplayer-withlist .aplayer-info {
+    border-bottom: none !important;
+}
+
+/* 播放/暂停按钮：右侧垂直居中、固定 36px；单曲时贴右缘(24px)，
+   多曲（fc-apmulti，有上一首/下一首）时移到两钮中间(52px) */
+.fc-card-body .aplayer .aplayer-body .aplayer-play,
+.fc-card-body .aplayer .aplayer-body .aplayer-pause {
+    position: absolute;
+    right: 24px;
+    top: 50%;
+    left: auto;
+    transform: translateY(-50%);
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, .28);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    transition: background .2s ease, transform .2s ease;
+}
+
+.fc-card-body .aplayer.fc-apmulti .aplayer-body .aplayer-play,
+.fc-card-body .aplayer.fc-apmulti .aplayer-body .aplayer-pause {
+    right: 52px;
+}
+
+.fc-card-body .aplayer .aplayer-body .aplayer-play:hover,
+.fc-card-body .aplayer .aplayer-body .aplayer-pause:hover {
+    background: rgba(0, 0, 0, .42);
+    transform: translateY(-50%) scale(1.05);
+}
+
+.fc-card-body .aplayer .aplayer-body .aplayer-play svg,
+.fc-card-body .aplayer .aplayer-body .aplayer-pause svg {
+    position: static;
+    transform: none;
+    width: 16px;
+    height: 16px;
+    fill: #fff;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .25));
+}
+
+/* 歌词在模糊背景上的可读性（对比度增强）；
+   官方 lrc 上下渐变条纹遮罩（亮色白条）与模糊封面背景冲突，全局移除 */
+.aplayer .aplayer-lrc::before,
+.aplayer .aplayer-lrc::after {
+    content: none;
+}
+
+/* 播放器辅助按钮公共底座（上一首 / 下一首）：主体右侧磨砂圆钮 */
+.fc-card-body .aplayer .fc-apprev,
+.fc-card-body .aplayer .fc-apnext {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, .28);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background .2s ease;
+}
+
+/* 右侧按钮排布（从右至左）：下一首 12 / 播放键 52 / 上一首 100 */
+.fc-card-body .aplayer .fc-apnext {
+    right: 12px;
+}
+
+.fc-card-body .aplayer .fc-apprev {
+    right: 100px;
+}
+
+.fc-card-body .aplayer .fc-apprev:hover,
+.fc-card-body .aplayer .fc-apnext:hover {
+    background: rgba(0, 0, 0, .42);
+}
+
+.fc-card-body .aplayer .fc-apprev svg,
+.fc-card-body .aplayer .fc-apnext svg {
+    width: 14px;
+    height: 14px;
+    fill: #fff;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .25));
+}
+
+/* 列表开关：常驻 .aplayer-list 容器下方居中的纯文字按钮；
+   默认显示「展开列表」，列表展开后显示「关闭列表」 */
+.fc-card-body .aplayer .fc-aplist-toggle {
+    display: block;
+    position: relative;
+    width: fit-content;
+    margin: 4px auto 2px;
+    padding: 2px 10px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 18px;
+    text-align: center;
+    /* 跟随明暗主题：--texths 亮色 #787878 / 暗色 #888888 自动切换 */
+    color: var(--texths);
+}
+
+.fc-card-body .aplayer .fc-aplist-toggle:hover {
+    opacity: .78;
+}
+
+.fc-card-body .aplayer .fc-aplist-toggle .fc-aplist-text-close {
+    display: none;
+}
+
+.fc-card-body .aplayer .fc-aplist-toggle.fc-aplist-opened .fc-aplist-text-open {
+    display: none;
+}
+
+.fc-card-body .aplayer .fc-aplist-toggle.fc-aplist-opened .fc-aplist-text-close {
+    display: inline;
+}
+
+[data-theme="dark"] .fc-card-body .aplayer .fc-apprev,
+[data-theme="dark"] .fc-card-body .aplayer .fc-apnext {
+    background: rgba(0, 0, 0, .45);
+}
+
+[data-theme="dark"] .fc-card-body .aplayer .fc-apprev:hover,
+[data-theme="dark"] .fc-card-body .aplayer .fc-apnext:hover {
+    background: rgba(0, 0, 0, .6);
+}
+
+[data-theme="dark"] .fc-card-body .aplayer .aplayer-body .aplayer-play,
+[data-theme="dark"] .fc-card-body .aplayer .aplayer-body .aplayer-pause {
+    background: rgba(0, 0, 0, .45);
+}
+
+[data-theme="dark"] .fc-card-body .aplayer .aplayer-body .aplayer-play:hover,
+[data-theme="dark"] .fc-card-body .aplayer .aplayer-body .aplayer-pause:hover {
+    background: rgba(0, 0, 0, .6);
 }
 
 /* [play] 多地址分集切换条（式样参照 VideoCollector 插件；首页信息流中已被 PHP 剔除） */
@@ -2042,35 +2259,42 @@ pre[class*=language-].line-numbers>code {
     .fc-card-body .video-tab { min-width: 85px; }
 }
 
-/* 播放器内「下一集」控件（式样同插件：点击缩放反馈） */
-.fc-video .artplayer-icon-next {
-    cursor: pointer;
-    transition: transform 0.2s ease;
-    display: inline-block;
-}
-
-.fc-video .artplayer-icon-next:active {
-    transform: scale(0.85) !important;
-}
-
 /* 播放器宽度小于 400px 时隐藏数字时间（当前时间/总时长） */
 .fc-video.vc-hide-time .art-control-time {
     display: none !important;
 }
 
-/* 竖屏窗口模式（非全屏/网页全屏）隐藏音量、数字时间、设置控件；全屏后自动恢复 */
-.fc-video.vc-portrait-compact:not(.art-fullscreen):not(.art-fullscreen-web) .art-control-volume,
-.fc-video.vc-portrait-compact:not(.art-fullscreen):not(.art-fullscreen-web) .art-control-time,
-.fc-video.vc-portrait-compact:not(.art-fullscreen):not(.art-fullscreen-web) .art-control-setting {
+/* 视频容器模式（非灯箱/全屏）隐藏控制栏：fc-arts 标记由 app.js 打到 .fc-video 上
+   （Artplayer 自带的 art-fullscreen-web 类挂在内部 .art-video-player 上，容器层判断不到） */
+.fc-video:not(.fc-arts) .art-bottom {
     display: none !important;
 }
 
-/* ArtPlayer 网页全屏时隐藏左下按钮组与右下计数条（app.js fullscreenWeb 事件给 body 加 .fc-videofs）：
-   播放器祖先卡片存在层叠上下文（transform 等），网页全屏容器的
-   z-index 困在其内部，z-index:19 的浮层会盖在视频上 */
-body.fc-videofs .fc-float,
-body.fc-videofs .fc-vc-bar {
-    display: none;
+.fc-video:not(.fc-arts) {
+    cursor: pointer;
+}
+
+/* 关闭自动播放时的一次性启动蒙版：透明覆盖整个播放器，接管首次点击（静音播放并移除），
+   视觉上仍透出 Artplayer 的居中大播放键；蒙版移除后点击播放器进灯箱 */
+.fc-video .fc-video-mask {
+    position: absolute;
+    inset: 0;
+    z-index: 99;
+    background: transparent;
+    cursor: pointer;
+}
+
+/* 灯箱/全屏控制栏恢复 Artplayer 原生显隐（悬停显示、播放中自动隐藏）；
+   .art-bottom 覆盖整个播放器，必须保持点击穿透（否则挡住视频区点击），子控件原生可点 */
+.fc-video.fc-arts .art-bottom {
+    pointer-events: none !important;
+}
+
+/* 竖屏窗口模式（非全屏/网页全屏）隐藏音量、数字时间、设置控件；全屏后自动恢复 */
+.fc-video.vc-portrait-compact:not(.fc-arts) .art-control-volume,
+.fc-video.vc-portrait-compact:not(.fc-arts) .art-control-time,
+.fc-video.vc-portrait-compact:not(.fc-arts) .art-control-setting {
+    display: none !important;
 }
 
 /* ===== APlayer 暗色配色（跟随 [data-theme="dark"]） ===== */
@@ -2078,10 +2302,6 @@ body.fc-videofs .fc-vc-bar {
     background: var(--cobg);
     /* 暗色下插件默认的黑色阴影不可见，改用亮色描边环 + 深投影增强层次 */
     box-shadow: 0 0 0 1px rgba(255, 255, 255, .06), 0 4px 16px rgba(0, 0, 0, .5);
-}
-
-[data-theme="dark"] .aplayer.aplayer-withlist .aplayer-info {
-    border-bottom-color: var(--fgxys);
 }
 
 [data-theme="dark"] .aplayer .aplayer-info .aplayer-music .aplayer-author {
@@ -2110,12 +2330,6 @@ body.fc-videofs .fc-vc-bar {
 
 [data-theme="dark"] .aplayer .aplayer-info .aplayer-controller .aplayer-volume-wrap .aplayer-volume-bar {
     background: rgba(255, 255, 255, .25);
-}
-
-/* 暗色下移除 APlayer 歌词区上下渐变阴影伪元素 */
-[data-theme="dark"] .aplayer .aplayer-lrc::before,
-[data-theme="dark"] .aplayer .aplayer-lrc::after {
-    content: none;
 }
 
 [data-theme="dark"] .aplayer .aplayer-lrc p {
@@ -2450,9 +2664,8 @@ body.fc-videofs .fc-vc-bar {
 }
 
 /* ============ 短代码播放器（APlayer / ArtPlayer） ============ */
-/* [Music]/[Video] 短代码容器；ArtPlayer 需要有高度的挂载点。
-   首页卡片播放器会被提取到正文区外独立输出（fc-card-body 直下），
-   详情页在正文内（.fc-text），故统一用 .fc-card-body 作用域 */
+/* [Music]/[Video] 短代码容器；ArtPlayer 需有高度的挂载点，首页卡片与详情页正文
+   两种输出位置统一用 .fc-card-body 作用域 */
 /* 播放器包装器：默认 16:9；竖屏视频按真实宽高比自适应，最高 300px */
 .fc-card-body .play-player-wrapper {
     position: relative;
@@ -2473,7 +2686,6 @@ body.fc-videofs .fc-vc-bar {
     }
 }
 
-
 /* ArtPlayer 容器：填满包装器 */
 .fc-card-body .fc-video {
     position: absolute;
@@ -2483,6 +2695,64 @@ body.fc-videofs .fc-vc-bar {
     height: 100%;
     border-radius: 8px;
     overflow: hidden;
+}
+
+/* ============ 视频灯箱 ============ */
+/* app.js 把 .fc-video 搬入 body 下浮层；暗背景 + 居中视频盒，点背景/×/Esc 关闭 */
+.fc-videolightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4vh 4vw;
+    background: rgba(0, 0, 0, .94);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity .25s ease, visibility .25s ease;
+}
+
+.fc-videolightbox.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* 右上角关闭钮：无底色的纯图标 */
+.fc-videolightbox-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 1;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: #fff;
+    font-size: 32px;
+    line-height: 1;
+    cursor: pointer;
+    transition: opacity .2s ease;
+}
+
+.fc-videolightbox-close:hover {
+    opacity: .72;
+}
+
+/* 容器在卡片内由包装器撑尺寸，进灯箱后按真实宽高比自撑：宽 = min(92vw, 92vh × 宽高比)；
+   --vc-video-ratio 由 app.js 在 loadedmetadata 时写到容器上 */
+.fc-videolightbox .fc-video {
+    position: relative;
+    width: min(92vw, calc(92vh * var(--vc-video-ratio, 1.7778)));
+    height: auto;
+    aspect-ratio: var(--vc-video-ratio, 1.7778);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, .5);
 }
 
 .fc-card-body .aplayer {

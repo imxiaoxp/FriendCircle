@@ -84,16 +84,9 @@
         onScroll();
     }
 
-    /* ============ 全局媒体互斥：同一时间仅允许一个媒体播放 ============ */
-    /* 以「播放状态」为准（媒体 paused 标志），不依赖按钮点击事件：
-       任一媒体进入播放态时记录开始时间并立即收敛——暂停其它播放中的媒体；
-       另有状态轮询兜底，事件错过或绑定失效时也能自动收敛到单播放。
-       - 媒体事件不冒泡，需捕获阶段监听；VideoCollector 等插件把播放器渲染进 iframe，
-         对同源 iframe 的 contentDocument 同样绑定监听；
-       - APlayer 的 audio 元素游离于 DOM 之外（不 appendChild），原生 play 事件
-         到不了 document，须通过实例事件桥接；
-       - 直接对元素 pause，插件（APlayer/ArtPlayer）UI 会随 pause 事件自行同步；
-       - 封面背景视频（.fc-cover 内静音循环视频）游离于互斥体系之外 */
+    /* ============ 全局媒体互斥：视频互斥 + 音频互斥，静音小窗视频可与音频共存 ============ */
+    /* 以播放状态为准（paused 标志）：视频间、音频间各保留最近开始者，小窗静音视频可与音频共存，
+       封面背景视频豁免；事件不冒泡需捕获监听（含同源 iframe），APlayer 游离 audio 经实例桥接 */
     (function () {
         function eachDoc(fn) {
             fn(document);
@@ -126,20 +119,45 @@
             return typeof m.fcStartedAt === 'number' ? m.fcStartedAt : 0;
         }
 
-        /* 状态收敛：播放中的媒体多于一个时，保留最近开始播放的一个，其余暂停；
+        /* 组内保留最近开始播放的一个；
            开始时间并列（无时间戳）时保留收集顺序靠后的（后出现的视为新播放） */
+        function newestOf(group) {
+            var keep = group[group.length - 1];
+            group.forEach(function (m) {
+                if (startedAtOf(m) > startedAtOf(keep)) keep = m;
+            });
+            return keep;
+        }
+
+        /* 状态收敛（分互斥域）：视频之间、音频之间各自保留最近开始的一个；
+           小窗静音视频（muted）与音频共存，非静音视频才与音频互斥（最近开始者胜出） */
         function syncPlayback() {
             var list = playingMedia();
             if (list.length < 2) return;
-            var keep = list[list.length - 1];
+            var videos = [];
+            var audios = [];
             list.forEach(function (m) {
-                if (startedAtOf(m) > startedAtOf(keep)) keep = m;
+                (m.tagName === 'VIDEO' ? videos : audios).push(m);
             });
-            list.forEach(function (m) {
-                if (m !== keep) {
+            var keepVideo = videos.length ? newestOf(videos) : null;
+            var keepAudio = audios.length ? newestOf(audios) : null;
+            videos.forEach(function (m) {
+                if (m !== keepVideo) {
                     try { m.pause(); } catch (err) {}
                 }
             });
+            audios.forEach(function (m) {
+                if (m !== keepAudio) {
+                    try { m.pause(); } catch (err) {}
+                }
+            });
+            if (keepVideo && keepAudio && !keepVideo.muted) {
+                if (startedAtOf(keepVideo) > startedAtOf(keepAudio)) {
+                    try { keepAudio.pause(); } catch (err) {}
+                } else {
+                    try { keepVideo.pause(); } catch (err) {}
+                }
+            }
         }
 
         /* 媒体进入播放态：记录开始时间并立即收敛 */
@@ -183,18 +201,93 @@
         });
 
         /* ---- APlayer 实例接入互斥 ---- */
-        /* APlayer 的 audio 游离于 DOM 之外，原生 play 事件到不了 document。
-           实例创建时机不定：Meting 对直链歌曲同步创建，对平台歌曲（data-id）
-           是 XHR 回调里才 new APlayer，因此包装 APlayer 构造函数，
-           任何时机创建的实例（首次加载 / 异步回调 / PJAX 重载）都会被接入 */
+        /* 极简化改造：播放键移至 .aplayer-body 右侧垂直居中，body 背景取当前曲目封面
+           （--fc-apidata 经 MutationObserver 随换歌更新），按钮显隐由 APlayer 自身切换 */
+        function fcMinifyAPlayer(ap) {
+            try {
+                var body = ap.container.querySelector('.aplayer-body');
+                if (!body || body.fcMinified) return;
+                body.fcMinified = true;
+                var pic = body.querySelector('.aplayer-pic');
+                ['.aplayer-play', '.aplayer-pause'].forEach(function (cls) {
+                    var btn = pic && pic.querySelector(cls);
+                    if (btn) {
+                        body.appendChild(btn);
+                        /* APlayer 未给按钮单独绑点击，播放/暂停靠点击冒泡到封面；
+                           移出封面后按钮失去事件来源，自行接管（封面点击保留） */
+                        btn.addEventListener('click', function (e) {
+                            e.stopPropagation();
+                            try { ap.toggle(); } catch (err) { /* 播放失败静默 */ }
+                        });
+                    }
+                });
+                var sync = function () {
+                    var m = ((pic && pic.style.backgroundImage) || '').match(/url\(["']?([^"')]+)["']?\)/);
+                    body.style.setProperty('--fc-apidata', m ? 'url("' + m[1] + '")' : 'none');
+                };
+                sync();
+                if (pic && window.MutationObserver) {
+                    new MutationObserver(sync).observe(pic, { attributes: true, attributeFilter: ['style'] });
+                }
+                /* 歌单模式：文字开关常驻 .aplayer-list 容器下方——
+                   列表默认收起（高度置 0），按钮显示「展开列表」，点击切换开合并随状态换文案 */
+                if (ap.container.classList.contains('aplayer-withlist')) {
+                    var listEle = ap.container.querySelector('.aplayer-list');
+                    if (listEle && !ap.container.querySelector('.fc-aplist-toggle')) {
+                        var lb = document.createElement('button');
+                        lb.type = 'button';
+                        lb.className = 'fc-aplist-toggle';
+                        lb.setAttribute('aria-label', '收起/展开播放列表');
+                        lb.innerHTML = '<span class="fc-aplist-text-open">展开列表</span><span class="fc-aplist-text-close">关闭列表</span>';
+                        lb.addEventListener('click', function (e) {
+                            e.stopPropagation();
+                            try {
+                                var ol = listEle.querySelector('ol');
+                                var opened = listEle.offsetHeight > 1;
+                                listEle.style.height = opened ? '0px' : (ol ? ol.scrollHeight + 'px' : 'auto');
+                                lb.classList.toggle('fc-aplist-opened', !opened);
+                            } catch (err) { /* 开合失败不影响播放 */ }
+                        });
+                        /* 默认收起：官方歌单初始为展开态，主动置 0（按钮保持「展开列表」文案） */
+                        if (listEle.offsetHeight > 1) {
+                            listEle.style.height = '0px';
+                        }
+                        listEle.insertAdjacentElement('afterend', lb);
+                    }
+                }
+                /* 多曲目（音乐列表）：上一首/下一首，右侧与播放键并排 */
+                var audios = ap.options && ap.options.audio;
+                if (Array.isArray(audios) && audios.length > 1) {
+                    /* 多曲标记：CSS 据此把播放键移到上一首/下一首中间；单曲时播放键贴右侧边 */
+                    ap.container.classList.add('fc-apmulti');
+                    [['fc-apprev', '上一首', ap.skipBack, '<path d="M7 5h2.6v14H7zM20 5v14L10.8 12z"/>'],
+                     ['fc-apnext', '下一首', ap.skipForward, '<path d="M14.4 5H17v14h-2.6zM4 5v14l9.2-7z"/>']]
+                        .forEach(function (it) {
+                            if (body.querySelector('.' + it[0])) return;
+                            var nb = document.createElement('button');
+                            nb.type = 'button';
+                            nb.className = it[0];
+                            nb.setAttribute('aria-label', it[1]);
+                            nb.title = it[1];
+                            nb.innerHTML = '<svg viewBox="0 0 24 24">' + it[3] + '</svg>';
+                            nb.addEventListener('click', function (e) {
+                                e.stopPropagation();
+                                try { it[2].call(ap); } catch (err) { /* 切歌失败静默 */ }
+                            });
+                            body.appendChild(nb);
+                        });
+                }
+            } catch (err) { /* 样式增强失败不影响播放 */ }
+        }
+
+        /* APlayer 的 audio 游离于 DOM 外，原生 play 事件到不了 document，且实例创建时机不定
+           （Meting 对平台歌曲在 XHR 回调才 new），包装构造函数使任何时机创建的实例都被接入 */
         function bindAPlayer(ap) {
             if (!ap || ap.fcMutexBound) return;
             ap.fcMutexBound = true;
-            /* APlayer 1.10.1 防御：list.switch 内部高亮 li 前不校验 DOM，
-               同容器二次初始化等场景下 audios 与列表 DOM 失同步，出错自动跳曲
-               （error → 2s 后 skipForward）时会抛 "Cannot read properties of
-               undefined (reading 'classList')"。失同步实例的容器已被接管，
-               switch 中断无实际影响，包守卫避免未捕获错误 */
+            fcMinifyAPlayer(ap);
+            /* APlayer 1.10.1 防御：audios 与列表 DOM 失同步（同容器二次初始化等）时
+               list.switch 会抛错中断跳曲，包守卫避免未捕获错误 */
             if (ap.list && typeof ap.list.switch === 'function' && !ap.list.fcSafeSwitch) {
                 var rawSwitch = ap.list.switch.bind(ap.list);
                 ap.list.fcSafeSwitch = true;
@@ -239,8 +332,7 @@
         }
 
         /* APlayer.min.js 经插件 header 钩子先于本文件输出，直接包装即可；
-           DOMContentLoaded 后兜底再试一次（防脚本顺序变化），
-           并接入此时已创建的实例 */
+           DOMContentLoaded 后兜底再试一次并接入已创建实例 */
         wrapAPlayer();
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', function () {
@@ -526,10 +618,8 @@
         return out;
     }
 
-    /* JS 侧尽力删除可见的记忆 cookie：真实 cookie 名带 md5(rootUrl) 前缀，
-       按扫描到的完整名删除；Typecho 写入时显式带 Domain=主机名，需带/不带
-       domain 各删一次；path 依部署目录而定（默认 /），逐级尝试覆盖子目录部署。
-       HttpOnly cookie 对本方法不可见，由 forget.php 服务端下发过期指令兜底 */
+    /* JS 侧尽力删除可见的记忆 cookie：真实名带 md5(rootUrl) 前缀按扫描到的完整名删，
+       带/不带 domain、逐级 path 各删一次；HttpOnly 部分由 forget.php 服务端兜底 */
     function fcDropRememberCookies() {
         try {
             var paths = ['/'];
@@ -1391,17 +1481,14 @@
     })();
 
     /* ============ 短代码播放器初始化（APlayer / ArtPlayer） ============ */
-    /* media.php 短代码输出 .aplayer / .fc-video 容器；首次与 PJAX 切页后均需执行。
-       APlayer 实例 push 进 window.aplayers（跨页销毁与互斥约定），
-       游离 audio 不在 DOM，play 时手动标记互斥时间戳；ArtPlayer 的 video 在 DOM 内，
-       自动被互斥捕获监听接管 */
+    /* media.php 输出 .aplayer / .fc-video 容器，首次与 PJAX 切页后均需执行；
+       APlayer 游离 audio 在 play 时手动标记互斥时间戳，ArtPlayer 的 video 在 DOM 内自动接管 */
     function fcInitMedia() {
         if (window.APlayer) {
             document.querySelectorAll('.aplayer').forEach(function (el) {
                 if (el.fcApInited) return;
-                /* Meting API 链接（单曲/歌单）：前端 fetch 实时解析。
-                   API 返回的音频直链带时效签名，不能固化进 HTML，
-                   每次访问拉取保证可播；歌单数组逐项映射为 APlayer 音频列表 */
+                /* Meting API 链接（单曲/歌单）：直链带时效签名不能固化进 HTML，
+                   前端 fetch 实时解析，歌单数组逐项映射为 APlayer 音频列表 */
                 if (el.dataset.api) {
                     el.fcApInited = true;
                     fetch(el.dataset.api).then(function (r) { return r.json(); }).then(function (data) {
@@ -1424,6 +1511,7 @@
                                 container: el,
                                 audio: audio,
                                 lrcType: 3,
+                                loop: 'none',
                                 preload: 'metadata',
                                 mutex: false
                             });
@@ -1450,6 +1538,7 @@
                             lrc: el.dataset.lrc || ''
                         }],
                         lrcType: el.dataset.lrc ? 3 : 0,
+                        loop: 'none',
                         preload: 'metadata',
                         mutex: false /* 互斥由主题统一管理 */
                     });
@@ -1467,10 +1556,8 @@
                 if (el.fcVideoInited || !el.dataset.url) return;
                 el.fcVideoInited = true;
                 try {
-                    var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                    /* 分集（[play] 多地址）：结构与交互参照 VideoCollector 插件。
-                       完整分集列表来自容器 data-urls（\n 分隔），与分集条解耦——
-                       首页信息流剔除分集条后仍保留「下一集」控件可切换 */
+                    /* 分集（[play] 多地址）：完整列表来自容器 data-urls（\n 分隔），与分集条解耦
+                       ——首页信息流剔除分集条后仍保留「下一集」控件可切换 */
                     var box = el.closest('.play-container');
                     var tabs = box ? box.querySelectorAll('.video-tab') : [];
                     var urls = (el.dataset.urls || el.dataset.url || '')
@@ -1503,9 +1590,6 @@
                         setting: true,
                         playbackRate: true,
                         fullscreen: true,
-                        /* 移动端窄视口（<400px）不创建网页全屏控件（彻底移除，无占位可点）；
-                           隐藏式处理会让 .art-control 容器残留占位与点击热区 */
-                        fullscreenWeb: !isMobile || (el.clientWidth || 0) >= 400,
                         miniProgressBar: true,
                         mutex: false, /* 同上 */
                         lang: 'zh-cn',
@@ -1527,15 +1611,16 @@
                     var wrapper = el.closest('.play-player-wrapper');
                     var updatePortraitCompact = function () {
                         var compact = el.classList.contains('vc-portrait')
-                            && !art.fullscreen && !art.fullscreenWeb;
+                            && !art.fullscreen && !el.fcLightbox;
                         el.classList.toggle('vc-portrait-compact', compact);
                     };
                     var applyOrientation = function () {
                         var v = art.template && art.template.$video;
                         if (!v || !v.videoWidth || !v.videoHeight) return;
+                        var ratio = (v.videoWidth / v.videoHeight).toFixed(4);
                         if (v.videoHeight > v.videoWidth) {
                             if (wrapper) {
-                                wrapper.style.setProperty('--vc-video-ratio', (v.videoWidth / v.videoHeight).toFixed(4));
+                                wrapper.style.setProperty('--vc-video-ratio', ratio);
                                 wrapper.classList.add('vc-portrait');
                             }
                             el.classList.add('vc-portrait');
@@ -1546,12 +1631,16 @@
                             }
                             el.classList.remove('vc-portrait');
                         }
+                        /* 宽高比同步写到容器上：容器被搬进灯箱后按真实比例自撑尺寸 */
+                        el.style.setProperty('--vc-video-ratio', ratio);
                         updatePortraitCompact();
                     };
-                    /* 播放器宽度小于 400px 隐藏数字时间（网页全屏控件已按设备/宽度决定是否创建） */
+                    /* 时间显示：仅窗口模式按宽度隐藏（<400px）；
+                       灯箱/系统全屏走原生控件逻辑，时间始终显示 */
                     var updateTimeVisibility = function () {
                         var w = (typeof art.width === 'number' && art.width > 0) ? art.width : (el.clientWidth || 0);
-                        el.classList.toggle('vc-hide-time', w > 0 && w < 400);
+                        el.classList.toggle('vc-hide-time',
+                            !el.fcLightbox && !art.fullscreen && w > 0 && w < 400);
                     };
                     var videoEl = art.template && art.template.$video;
                     if (videoEl) {
@@ -1559,13 +1648,136 @@
                         videoEl.addEventListener('loadedmetadata', applyOrientation);
                     }
                     art.on('resize', updateTimeVisibility);
-                    art.on('fullscreen', updatePortraitCompact);
-                    /* 网页全屏时给 body 加标记：播放器祖先卡片存在层叠上下文，
-                       网页全屏容器的 z-index 困在其内部，z-index:19 的浮层会盖在视频上 */
-                    art.on('fullscreenWeb', function () {
-                        document.body.classList.toggle('fc-videofs', !!art.fullscreenWeb);
+                    /* 容器状态标记：灯箱/系统全屏时给 .fc-video 加 fc-arts，CSS 据此切换控件显隐，
+                       切换同时重估时间显隐 */
+                    var syncArtState = function () {
+                        el.classList.toggle('fc-arts', !!(art.fullscreen || el.fcLightbox));
+                        updateTimeVisibility();
+                    };
+                    /* 声音状态机：灯箱/系统全屏一律有声、回容器一律静音续播，
+                       两条路径走同一幂等函数，覆盖嵌套进出的全部路径组合 */
+                    var syncMuted = function () {
+                        if (art.fullscreen || el.fcLightbox) {
+                            art.muted = false;
+                            /* 切有声时向互斥体系登记开始时间（此转换无 play 事件，
+                               不登记会与正在播放的音频同时出声） */
+                            var v = art.template && art.template.$video;
+                            if (v && typeof window.fcMarkMediaStarted === 'function') {
+                                window.fcMarkMediaStarted(v);
+                            }
+                        } else {
+                            art.muted = true;
+                            if (art.paused) art.play();
+                        }
+                    };
+                    art.on('fullscreen', function () {
                         updatePortraitCompact();
+                        syncArtState();
+                        syncMuted();
                     });
+                    /* 视频灯箱：容器临时搬进 body 下浮层，播放不中断，点背景/×/Esc 关闭并搬回原位；
+                       浮层挂 body 下不受卡片层叠上下文困锁，滚动锁定复用 html.lightbox-open */
+                    var onLbKey = function (e) {
+                        if ('Escape' === e.key) closeLightbox();
+                    };
+                    var openLightbox = function () {
+                        if (el.fcLightbox) return;
+                        var lb = document.querySelector('.fc-videolightbox');
+                        if (!lb) {
+                            lb = document.createElement('div');
+                            lb.className = 'fc-videolightbox';
+                            lb.innerHTML = '<button type="button" class="fc-videolightbox-close" aria-label="关闭">&times;</button>'
+                                + '<div class="fc-videolightbox-box"></div>';
+                            document.body.appendChild(lb);
+                            /* 浮层全局唯一：关闭动作按次指向当前打开灯箱的播放器 */
+                            lb.addEventListener('click', function (e) {
+                                var t = e.target;
+                                if (t === lb || (t.classList && t.classList.contains('fc-videolightbox-close'))) {
+                                    if (typeof lb.fcClose === 'function') lb.fcClose();
+                                }
+                            });
+                        }
+                        el.fcLbParent = el.parentNode;
+                        el.fcLbNext = el.nextSibling;
+                        el.fcLightbox = true;
+                        lb.querySelector('.fc-videolightbox-box').appendChild(el);
+                        lb.classList.add('show');
+                        document.documentElement.classList.add('lightbox-open');
+                        lb.fcClose = closeLightbox;
+                        document.addEventListener('keydown', onLbKey);
+                        syncArtState();
+                        syncMuted();
+                    };
+                    var closeLightbox = function () {
+                        if (!el.fcLightbox) return;
+                        el.fcLightbox = false;
+                        document.removeEventListener('keydown', onLbKey);
+                        if (el.fcLbParent) {
+                            try { el.fcLbParent.insertBefore(el, el.fcLbNext); } catch (err) {}
+                            el.fcLbParent = null;
+                            el.fcLbNext = null;
+                        }
+                        var lb = document.querySelector('.fc-videolightbox');
+                        if (lb) lb.classList.remove('show');
+                        document.documentElement.classList.remove('lightbox-open');
+                        syncArtState();
+                        syncMuted();
+                    };
+                    /* 视频自动播放（后台开关 window.fcVideoAuto）：开启时露出≥一半自动静音播放、
+                       滚出暂停（实例注册进单例观察器，全屏/灯箱不干预）；关闭时盖一次性透明蒙版，
+                       点击静音播放并移除，之后点击播放器进灯箱 */
+                    art.muted = true;
+                    el.addEventListener('click', function (e) {
+                        /* 灯箱/系统全屏：完全交还 Artplayer 原生交互（视频区点击切换播放/暂停、
+                           控制条原生处理），配套 CSS 已让 .art-bottom 整层穿透、仅子控件可点 */
+                        if (el.fcLightbox || art.fullscreen) return;
+                        /* 蒙版点击放行给蒙版自己的监听（本捕获监听先于蒙版执行） */
+                        if (e.target && e.target.classList && e.target.classList.contains('fc-video-mask')) return;
+                        /* 窗口模式：屏蔽原生交互由主题接管——暂停→静音播放；播放中→开灯箱 */
+                        e.stopPropagation();
+                        if (art.paused) {
+                            art.muted = true;
+                            art.play();
+                        } else {
+                            openLightbox();
+                        }
+                    }, true);
+                    if (window.fcVideoAuto) {
+                        /* 单例观察器：fcInitMedia 会随分页加载反复执行，观察器全局只建一次；
+                           observe() 会立即回调当前交叉状态，首屏在可视范围内的视频直接开播 */
+                        if (!window.fcVideoAutoIO) {
+                            window.fcVideoAutoIO = new IntersectionObserver(function (entries) {
+                                entries.forEach(function (entry) {
+                                    var target = entry.target;
+                                    var inst = target.fcArt;
+                                    if (!inst) return;
+                                    /* 系统全屏/灯箱不干预（灯箱为有声播放，不能被重置回静音） */
+                                    if (inst.fullscreen || target.fcLightbox) return;
+                                    if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+                                        inst.muted = true;
+                                        var p = inst.play();
+                                        if (p && p.catch) p.catch(function () {});
+                                    } else if (!inst.paused) {
+                                        try { inst.pause(); } catch (err) {}
+                                    }
+                                });
+                            }, { threshold: [0, 0.5] });
+                        }
+                        el.fcArt = art;
+                        window.fcVideoAutoIO.observe(el);
+                    } else {
+                        var mask = document.createElement('div');
+                        mask.className = 'fc-video-mask';
+                        mask.addEventListener('click', function (e) {
+                            /* 只小窗口静音播放，不放大；蒙版移除后点击播放器才进灯箱 */
+                            e.stopPropagation();
+                            art.muted = true;
+                            var pp = art.play();
+                            if (pp && pp.catch) pp.catch(function () {});
+                            mask.remove();
+                        });
+                        el.appendChild(mask);
+                    }
                     updateTimeVisibility();
                 } catch (err) {}
             });
@@ -1574,9 +1786,7 @@
     window.fcInitMedia = fcInitMedia;
 
     /* ============ 个人资料区头像/昵称替换 ============ */
-    /* fc-profile-row 默认展示博主信息；优先级：登录用户（PHP 输出 data-login-*） >
-       评论者信息（fcRemembered：localStorage fc-commenter 优先，回退 Typecho 原生记忆 cookie；
-       头像 = md5(邮箱) 拼头像源模板） > 默认 */
+    /* 优先级：登录用户（PHP 输出 data-login-*）> 评论者信息（fcRemembered，头像 = md5(邮箱) 拼头像源模板）> 默认 */
     function fcInitProfile() {
         var row = document.querySelector('.fc-profile-row');
         if (!row) return;
@@ -1632,9 +1842,8 @@
     window.fcInitProfile = fcInitProfile;
 
     /* ============ 发布时间相对化（逻辑参照 WeiBo-X 主题） ============ */
-    /* <60s 刚刚；<30天 N分钟/小时/天前；30天外绝对时间 YYYY-MM-DD HH:mm。
-       PHP 在 .fc-card-time span 上输出 data-time（Unix 秒），文本为服务端日期作 JS 失效兜底；
-       每 30 秒重算一次，页面停留时「刚刚」等自动推进（实时显示） */
+    /* <60s 刚刚；<30天 N分钟/小时/天前；30天外绝对时间；PHP 输出 data-time（Unix 秒）兜底，
+       每 30 秒重算一次 */
     function fcFormatTime(ts) {
         var diff = Math.floor(Date.now() / 1000) - ts;
         if (isNaN(diff) || diff < 0) return '';
@@ -1780,10 +1989,9 @@
         fcAutoDetectCode(document);
     };
 
-    /* ============ Prism 行号：line-numbers 插件仅处理带 line-numbers 类的块 ============ */
-    // 插件 CSS/JS 已在 header 引入、样式已适配，但无人给 pre 补类导致行号不显示。
-    // 这里统一给正文代码块开启；显式标注语言的块可能已被 Prism 核心的
-    // DOMContentLoaded 高亮先处理（时序早于本主题初始化），需补高亮一次生成行号
+    /* ============ Prism 行号 ============ */
+    // line-numbers 插件仅处理带 line-numbers 类的块，这里统一给正文代码块开启；
+    // 显式标注语言的块可能已被 Prism 核心的 DOMContentLoaded 高亮先处理，需补高亮一次生成行号
     function fcEnableLineNumbers(root) {
         if (!window.Prism) return;
         (root || document).querySelectorAll('.fc-detail-text pre > code, .fc-text pre > code').forEach(function (code) {
@@ -1833,9 +2041,8 @@
 })();
 
 /* ============ PJAX：站内无刷新跳转 ============ */
-/* fetch 新页面替换 .fc-page 主体（顶栏节点移植保留背景音乐与监听），head 中
-   主题/插件资源按需补载；完成后重跑页面级初始化，并重载 APlayer（loadMeting）
-   与 VideoCollector（initVideoCollectors）。任一环节失败整页跳转兜底。 */
+/* fetch 新页面替换 .fc-page 主体（顶栏节点移植保留背景音乐），head 资源按需补载，
+   完成后重跑页面级初始化并重载 APlayer/VideoCollector，任一环节失败整页跳转兜底 */
 (function () {
     if (!window.history || !window.history.pushState || window.fcPjaxEnabled === false) return;
 

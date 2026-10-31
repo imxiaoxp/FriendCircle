@@ -5,7 +5,7 @@
  *
  * @package FriendCircle
  * @author Xiao
- * @version 1.1.2
+ * @version 1.1.3
  * @link https://xiao.cn.mt
  */
 if (!defined('__TYPECHO_ROOT_DIR__')) exit;
