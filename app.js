@@ -2077,6 +2077,37 @@
         fcInitLikeState();
         fcEnableLineNumbers(document);
         fcAutoDetectCode(document);
+
+        /* 滚动锚点恢复：从详情页返回列表（URL 与离开记录匹配）时，
+           先把分页内容补齐到目标高度，再滚回离开时的可视位置 */
+        try {
+            var fcRec = JSON.parse(sessionStorage.getItem('fcListRestore') || 'null');
+            if (fcRec && fcRec.url === location.href && fcRec.y > 0 && Date.now() - fcRec.t < 1800000) {
+                sessionStorage.removeItem('fcListRestore');
+                var fcNeedMore = function () {
+                    return document.documentElement.scrollHeight - window.innerHeight < fcRec.y;
+                };
+                var fcApplyAnchor = function () {
+                    window.scrollTo(0, fcRec.y);
+                };
+                if (!fcNeedMore() || !loadmore) {
+                    fcApplyAnchor();
+                } else {
+                    /* 高度不足：轮询追加下一页（fcLoadNext 自带防重入），
+                       直到内容够高或没有下一页；上限 30 轮防异常死循环 */
+                    var fcTurns = 0;
+                    var fcRestoreStep = function () {
+                        if (!fcNeedMore() || !loadmore.getAttribute('data-next') || fcTurns++ > 30) {
+                            fcApplyAnchor();
+                            return;
+                        }
+                        fcLoadNext();
+                        setTimeout(fcRestoreStep, 120);
+                    };
+                    fcRestoreStep();
+                }
+            }
+        } catch (e) {}
     };
 
     /* ============ Prism 行号 ============ */
@@ -2129,6 +2160,17 @@
         window.fcInitPage();
     });
 })();
+
+/* ============ 列表滚动锚点：整页跳转模式下的记录通道 ============ */
+/* 整页离开前若处于列表页，记录 URL 与滚动位置，返回时由 fcInitPage 恢复；
+   PJAX 模式由 navigate 入口记录（PJAX 点击不触发 pagehide），两通道互补 */
+window.addEventListener('pagehide', function () {
+    try {
+        if (document.getElementById('fc-list')) {
+            sessionStorage.setItem('fcListRestore', JSON.stringify({ url: location.href, y: window.scrollY, t: Date.now() }));
+        }
+    } catch (e) {}
+});
 
 /* ============ PJAX：站内无刷新跳转 ============ */
 /* fetch 新页面替换 .fc-page 主体（顶栏节点移植保留背景音乐），head 资源按需补载，
@@ -2278,6 +2320,13 @@
     function navigate(url, push) {
         if (navigating) return;
         navigating = true;
+        /* 列表滚动锚点：离开列表页（首页/作者/分类/标签/搜索/日期均有 .fc-list）
+           前记录当前 URL 与滚动位置，返回时由 fcInitPage 恢复 */
+        try {
+            if (document.getElementById('fc-list')) {
+                sessionStorage.setItem('fcListRestore', JSON.stringify({ url: location.href, y: window.scrollY, t: Date.now() }));
+            }
+        } catch (e) {}
         if (window.NProgress) NProgress.start();
         fcShowPjaxSkeleton();
         var have = currentAssets();
