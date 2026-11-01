@@ -14,8 +14,9 @@ $this->need('header.php');
 ?>
 
 <?php if (!$this->is('index')): ?>
-<!-- 归档页（搜索/分类/标签/作者等）顶部：返回主页 + 归档标题 -->
-<div class="fc-detail-bar">
+<!-- 归档页（搜索/分类/标签/作者等）顶部：返回主页 + 归档标题；
+     fc-archive-bar 标记供 JS 区分「列表页标题条」与真正的详情页 -->
+<div class="fc-detail-bar<?php if ($this->is('archive')) echo ' fc-archive-bar'; ?>">
     <a class="fc-detail-back" href="<?php $this->options->siteUrl(); ?>">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">

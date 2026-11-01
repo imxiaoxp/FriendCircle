@@ -1206,7 +1206,9 @@
             var input = searchModal.querySelector('.fc-search-input');
             if (input) {
                 input.value = '';
-                input.focus();
+                requestAnimationFrame(function () {
+                    requestAnimationFrame(function () { input.focus(); });
+                });
             }
         };
         var fcCloseSearch = function () {
@@ -1588,7 +1590,11 @@
                     /* 详情页窗口视频：有声 + 原生控件，点击/控制条走 Artplayer 原生交互，
                        无蒙版、不自动播放；页面最后一个视频在播放中滚出视口时自动吸顶小窗续播；
                        PC 端额外带网页全屏控件（移动端无此必要不提供） */
-                    var isDetail = !!document.querySelector('.fc-detail-bar');
+                    /* 详情页判定：fc-detail-bar 且非归档列表标题条——作者/分类/标签/
+                       搜索等动态列表页共用 index.php 也会输出 detail-bar，带
+                       fc-archive-bar 标记，应走首页列表逻辑（静音自动播放+灯箱） */
+                    var detailBar = document.querySelector('.fc-detail-bar');
+                    var isDetail = !!detailBar && !detailBar.classList.contains('fc-archive-bar');
                     var isMobileUA = /Android|iPhone|iPad|iPod|Mobile|Silk/i.test(navigator.userAgent);
                     var art = new Artplayer({
                         container: el,
