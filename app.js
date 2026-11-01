@@ -255,13 +255,12 @@
                         listEle.insertAdjacentElement('afterend', lb);
                     }
                 }
-                /* 多曲目（音乐列表）：上一首/下一首，右侧与播放键并排 */
+                /* 多曲目（音乐列表）：下一首，右侧与播放键并排 */
                 var audios = ap.options && ap.options.audio;
                 if (Array.isArray(audios) && audios.length > 1) {
-                    /* 多曲标记：CSS 据此把播放键移到上一首/下一首中间；单曲时播放键贴右侧边 */
+                    /* 多曲标记：CSS 据此把播放键左移给下一首让位；单曲时播放键贴右侧边 */
                     ap.container.classList.add('fc-apmulti');
-                    [['fc-apprev', '上一首', ap.skipBack, '<path d="M7 5h2.6v14H7zM20 5v14L10.8 12z"/>'],
-                     ['fc-apnext', '下一首', ap.skipForward, '<path d="M14.4 5H17v14h-2.6zM4 5v14l9.2-7z"/>']]
+                    [['fc-apnext', '下一首', ap.skipForward, '<path d="M14.4 5H17v14h-2.6zM4 5v14l9.2-7z"/>']]
                         .forEach(function (it) {
                             if (body.querySelector('.' + it[0])) return;
                             var nb = document.createElement('button');
@@ -1741,28 +1740,18 @@
                         syncMuted();
                     };
                     /* 详情页窗口视频：详情判定已在创建时确定；后台开启自动播放时
-                       遵循可见范围有声自动播放；播放中的视频从顶部滚出视口时
-                       自动吸顶续播 */
+                       进页面即有声自动播放（不做滚动可见范围联动）；播放中的视频
+                       从顶部滚出视口时自动吸顶续播 */
                     if (isDetail) {
                         art.muted = false;
                         el.classList.add('vc-detail');
                         if (window.fcVideoAuto) {
-                            /* 详情页自动播放遵循可见范围逻辑：露出过半 → 有声自动播放；
-                               露出不足一半 → 暂停（顶部方向滚出由吸顶逻辑接管续播，豁免）。
-                               有声自动播放被浏览器策略拦截时保持暂停，不降级静音 */
-                            el.fcAutoIO = new IntersectionObserver(function (entries) {
-                                entries.forEach(function (entry) {
-                                    if (art.fullscreen || art.fullscreenWeb || el.fcLightbox || el.classList.contains('vc-sticky')) return;
-                                    var top = entry.rootBounds ? entry.rootBounds.top : 0;
-                                    if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
-                                        var p = art.play();
-                                        if (p && p.catch) p.catch(function () {});
-                                    } else if (entry.intersectionRatio < 0.5 && entry.boundingClientRect.top > top && !art.paused) {
-                                        art.pause();
-                                    }
-                                });
-                            }, { threshold: [0, 0.5] });
-                            el.fcAutoIO.observe(el);
+                            /* 进页面自动播放一次（有声），被浏览器策略拦截则停在首帧。
+                               之后播放/暂停完全由用户与吸顶逻辑控制，不随滚动自动启停 */
+                            art.on('ready', function () {
+                                var p = art.play();
+                                if (p && p.catch) p.catch(function () {});
+                            });
                         }
                         /* 吸顶对所有详情页视频生效，实际只有播放中的视频会触发
                            （pin 条件含 !art.paused，配合全局媒体互斥同一时刻仅一个在播） */
