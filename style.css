@@ -2265,12 +2265,13 @@ pre[class*=language-].line-numbers>code {
 }
 
 /* 视频容器模式（非灯箱/全屏）隐藏控制栏：fc-arts 标记由 app.js 打到 .fc-video 上
-   （Artplayer 自带的 art-fullscreen-web 类挂在内部 .art-video-player 上，容器层判断不到） */
-.fc-video:not(.fc-arts) .art-bottom {
+   （Artplayer 自带的 art-fullscreen-web 类挂在内部 .art-video-player 上，容器层判断不到）；
+   详情页窗口视频（vc-detail）走有声+原生控件，不隐藏 */
+.fc-video:not(.fc-arts):not(.vc-detail) .art-bottom {
     display: none !important;
 }
 
-.fc-video:not(.fc-arts) {
+.fc-video:not(.fc-arts):not(.vc-detail) {
     cursor: pointer;
 }
 
@@ -2291,9 +2292,18 @@ pre[class*=language-].line-numbers>code {
 }
 
 /* 竖屏窗口模式（非全屏/网页全屏）隐藏音量、数字时间、设置控件；全屏后自动恢复 */
-.fc-video.vc-portrait-compact:not(.fc-arts) .art-control-volume,
-.fc-video.vc-portrait-compact:not(.fc-arts) .art-control-time,
-.fc-video.vc-portrait-compact:not(.fc-arts) .art-control-setting {
+.fc-video.vc-portrait-compact:not(.fc-arts):not(.vc-detail) .art-control-volume,
+.fc-video.vc-portrait-compact:not(.fc-arts):not(.vc-detail) .art-control-time,
+.fc-video.vc-portrait-compact:not(.fc-arts):not(.vc-detail) .art-control-setting {
+    display: none !important;
+}
+
+/* 详情页竖屏窗口：隐藏数字时间、音量、网页全屏与设置控件（PIP/系统全屏保留；
+   移动端横屏窗口的设置控件保留显示） */
+.fc-video.vc-portrait-compact.vc-detail:not(.fc-arts) .art-control-volume,
+.fc-video.vc-portrait-compact.vc-detail:not(.fc-arts) .art-control-time,
+.fc-video.vc-portrait-compact.vc-detail:not(.fc-arts) .art-control-setting,
+.fc-video.vc-portrait-compact.vc-detail:not(.fc-arts) .art-control-fullscreenWeb {
     display: none !important;
 }
 
@@ -2746,6 +2756,8 @@ pre[class*=language-].line-numbers>code {
    --vc-video-ratio 由 app.js 在 loadedmetadata 时写到容器上 */
 .fc-videolightbox .fc-video {
     position: relative;
+    /* 自成层叠上下文：约束 Artplayer 内部层（z-index 最高 ~90）不盖过关闭按钮 */
+    z-index: 0;
     width: min(92vw, calc(92vh * var(--vc-video-ratio, 1.7778)));
     height: auto;
     aspect-ratio: var(--vc-video-ratio, 1.7778);
@@ -2757,4 +2769,55 @@ pre[class*=language-].line-numbers>code {
 
 .fc-card-body .aplayer {
     margin: 8px 0;
+}
+
+/* ===== 详情页视频吸顶：播放中滚出视口时固定于顶栏下方续播（仅详情页最后一个视频） =====
+   保持原尺寸比例：宽度由 JS 取容器当前宽写入 --vc-sticky-w，高度按宽高比自撑 */
+.fc-video.vc-sticky {
+    position: fixed;
+    top: 60px;
+    left: var(--vc-sticky-left, 0);
+    z-index: 250;
+    width: var(--vc-sticky-w, 320px);
+    height: auto;
+    aspect-ratio: var(--vc-video-ratio, 1.7778);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, .45);
+    animation: vcStickyIn .25s ease;
+}
+
+@keyframes vcStickyIn {
+    from {
+        opacity: 0;
+        transform: translateY(-12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 吸顶小窗关闭钮：仅吸顶态显示，点击暂停并回原位 */
+.fc-video .vc-sticky-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 99;
+    display: none;
+    width: 24px;
+    height: 24px;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, .55);
+    color: #fff;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.fc-video.vc-sticky .vc-sticky-close {
+    display: flex;
 }

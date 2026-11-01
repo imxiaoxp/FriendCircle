@@ -1571,6 +1571,9 @@
                             el.fcTabIndex = index;
                             tabs.forEach(function (t, i) { t.classList.toggle('active', i === index); });
                             art.switchUrl(urls[index]);
+                            /* 切换分集后自动播放新分集（被浏览器策略拦截则停在首帧） */
+                            var sp = art.play();
+                            if (sp && sp.catch) sp.catch(function () {});
                             /* 最后一集隐藏「下一集」按钮（同插件） */
                             var last = index >= urls.length - 1;
                             var nextBtn = el.querySelector('.art-icon-next');
@@ -1583,6 +1586,11 @@
                             tab.addEventListener('click', function () { switchTab(i); });
                         });
                     }
+                    /* 详情页窗口视频：有声 + 原生控件，点击/控制条走 Artplayer 原生交互，
+                       无蒙版、不自动播放；页面最后一个视频在播放中滚出视口时自动吸顶小窗续播；
+                       PC 端额外带网页全屏控件（移动端无此必要不提供） */
+                    var isDetail = !!document.querySelector('.fc-detail-bar');
+                    var isMobileUA = /Android|iPhone|iPad|iPod|Mobile|Silk/i.test(navigator.userAgent);
                     var art = new Artplayer({
                         container: el,
                         url: el.dataset.url,
@@ -1590,6 +1598,8 @@
                         setting: true,
                         playbackRate: true,
                         fullscreen: true,
+                        fullscreenWeb: isDetail && !isMobileUA,
+                        pip: isDetail && !isMobileUA,
                         miniProgressBar: true,
                         mutex: false, /* 同上 */
                         lang: 'zh-cn',
@@ -1611,7 +1621,7 @@
                     var wrapper = el.closest('.play-player-wrapper');
                     var updatePortraitCompact = function () {
                         var compact = el.classList.contains('vc-portrait')
-                            && !art.fullscreen && !el.fcLightbox;
+                            && !art.fullscreen && !art.fullscreenWeb && !el.fcLightbox;
                         el.classList.toggle('vc-portrait-compact', compact);
                     };
                     var applyOrientation = function () {
@@ -1635,12 +1645,13 @@
                         el.style.setProperty('--vc-video-ratio', ratio);
                         updatePortraitCompact();
                     };
-                    /* 时间显示：仅窗口模式按宽度隐藏（<400px）；
-                       灯箱/系统全屏走原生控件逻辑，时间始终显示 */
+                    /* 时间显示：窗口模式按宽度隐藏（<400px）；灯箱/系统全屏走原生
+                       控件逻辑，时间始终显示。详情页移动端横屏窗口例外：保持时间显示 */
                     var updateTimeVisibility = function () {
                         var w = (typeof art.width === 'number' && art.width > 0) ? art.width : (el.clientWidth || 0);
                         el.classList.toggle('vc-hide-time',
-                            !el.fcLightbox && !art.fullscreen && w > 0 && w < 400);
+                            !el.fcLightbox && !art.fullscreen && w > 0 && w < 400
+                            && !(isDetail && isMobileUA && !el.classList.contains('vc-portrait')));
                     };
                     var videoEl = art.template && art.template.$video;
                     if (videoEl) {
@@ -1651,11 +1662,12 @@
                     /* 容器状态标记：灯箱/系统全屏时给 .fc-video 加 fc-arts，CSS 据此切换控件显隐，
                        切换同时重估时间显隐 */
                     var syncArtState = function () {
-                        el.classList.toggle('fc-arts', !!(art.fullscreen || el.fcLightbox));
+                        el.classList.toggle('fc-arts', !!(art.fullscreen || art.fullscreenWeb || el.fcLightbox));
                         updateTimeVisibility();
                     };
                     /* 声音状态机：灯箱/系统全屏一律有声、回容器一律静音续播，
-                       两条路径走同一幂等函数，覆盖嵌套进出的全部路径组合 */
+                       两条路径走同一幂等函数，覆盖嵌套进出的全部路径组合；
+                       详情页窗口视频本身有声，退出全屏后保持原音量不静音 */
                     var syncMuted = function () {
                         if (art.fullscreen || el.fcLightbox) {
                             art.muted = false;
@@ -1665,7 +1677,7 @@
                             if (v && typeof window.fcMarkMediaStarted === 'function') {
                                 window.fcMarkMediaStarted(v);
                             }
-                        } else {
+                        } else if (!el.classList.contains('vc-detail')) {
                             art.muted = true;
                             if (art.paused) art.play();
                         }
@@ -1674,6 +1686,11 @@
                         updatePortraitCompact();
                         syncArtState();
                         syncMuted();
+                    });
+                    /* 网页全屏（仅详情页 PC）：状态标记/竖屏压缩联动；声音全程不变 */
+                    art.on('fullscreenWeb', function () {
+                        updatePortraitCompact();
+                        syncArtState();
                     });
                     /* 视频灯箱：容器临时搬进 body 下浮层，播放不中断，点背景/×/Esc 关闭并搬回原位；
                        浮层挂 body 下不受卡片层叠上下文困锁，滚动锁定复用 html.lightbox-open */
@@ -1723,60 +1740,138 @@
                         syncArtState();
                         syncMuted();
                     };
-                    /* 视频自动播放（后台开关 window.fcVideoAuto）：开启时露出≥一半自动静音播放、
-                       滚出暂停（实例注册进单例观察器，全屏/灯箱不干预）；关闭时盖一次性透明蒙版，
-                       点击静音播放并移除，之后点击播放器进灯箱 */
-                    art.muted = true;
-                    el.addEventListener('click', function (e) {
-                        /* 灯箱/系统全屏：完全交还 Artplayer 原生交互（视频区点击切换播放/暂停、
-                           控制条原生处理），配套 CSS 已让 .art-bottom 整层穿透、仅子控件可点 */
-                        if (el.fcLightbox || art.fullscreen) return;
-                        /* 蒙版点击放行给蒙版自己的监听（本捕获监听先于蒙版执行） */
-                        if (e.target && e.target.classList && e.target.classList.contains('fc-video-mask')) return;
-                        /* 窗口模式：屏蔽原生交互由主题接管——暂停→静音播放；播放中→开灯箱 */
-                        e.stopPropagation();
-                        if (art.paused) {
-                            art.muted = true;
-                            art.play();
-                        } else {
-                            openLightbox();
-                        }
-                    }, true);
-                    if (window.fcVideoAuto) {
-                        /* 单例观察器：fcInitMedia 会随分页加载反复执行，观察器全局只建一次；
-                           observe() 会立即回调当前交叉状态，首屏在可视范围内的视频直接开播 */
-                        if (!window.fcVideoAutoIO) {
-                            window.fcVideoAutoIO = new IntersectionObserver(function (entries) {
+                    /* 详情页窗口视频：详情判定已在创建时确定；后台开启自动播放时
+                       遵循可见范围有声自动播放；播放中的视频从顶部滚出视口时
+                       自动吸顶续播 */
+                    if (isDetail) {
+                        art.muted = false;
+                        el.classList.add('vc-detail');
+                        if (window.fcVideoAuto) {
+                            /* 详情页自动播放遵循可见范围逻辑：露出过半 → 有声自动播放；
+                               露出不足一半 → 暂停（顶部方向滚出由吸顶逻辑接管续播，豁免）。
+                               有声自动播放被浏览器策略拦截时保持暂停，不降级静音 */
+                            el.fcAutoIO = new IntersectionObserver(function (entries) {
                                 entries.forEach(function (entry) {
-                                    var target = entry.target;
-                                    var inst = target.fcArt;
-                                    if (!inst) return;
-                                    /* 系统全屏/灯箱不干预（灯箱为有声播放，不能被重置回静音） */
-                                    if (inst.fullscreen || target.fcLightbox) return;
+                                    if (art.fullscreen || art.fullscreenWeb || el.fcLightbox || el.classList.contains('vc-sticky')) return;
+                                    var top = entry.rootBounds ? entry.rootBounds.top : 0;
                                     if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
-                                        inst.muted = true;
-                                        var p = inst.play();
+                                        var p = art.play();
                                         if (p && p.catch) p.catch(function () {});
-                                    } else if (!inst.paused) {
-                                        try { inst.pause(); } catch (err) {}
+                                    } else if (entry.intersectionRatio < 0.5 && entry.boundingClientRect.top > top && !art.paused) {
+                                        art.pause();
                                     }
                                 });
                             }, { threshold: [0, 0.5] });
+                            el.fcAutoIO.observe(el);
                         }
-                        el.fcArt = art;
-                        window.fcVideoAutoIO.observe(el);
+                        /* 吸顶对所有详情页视频生效，实际只有播放中的视频会触发
+                           （pin 条件含 !art.paused，配合全局媒体互斥同一时刻仅一个在播） */
+                        var stickyClose = null;
+                        var unpinSticky = function () {
+                            el.classList.remove('vc-sticky');
+                            if (wrapper) wrapper.style.height = '';
+                            if (stickyClose) {
+                                stickyClose.remove();
+                                stickyClose = null;
+                            }
+                        };
+                        var pinSticky = function () {
+                            if (el.classList.contains('vc-sticky') || art.fullscreen || art.fullscreenWeb || el.fcLightbox) return;
+                            /* 播放状态双重实时校验：直接查媒体元素 paused（而非仅 Artplayer
+                               实例属性），确保只有真正播放中的视频才会吸顶 */
+                            if (!videoEl || videoEl.paused) return;
+                            /* 吸顶复刻窗口模式布局：宽度与左缘取容器当前视口几何，
+                               高度按宽高比自撑，不居中不缩放 */
+                            var rect = el.getBoundingClientRect();
+                            el.style.setProperty('--vc-sticky-w', Math.round(rect.width) + 'px');
+                            el.style.setProperty('--vc-sticky-left', Math.round(rect.left) + 'px');
+                            /* 锁定原位占位高度：容器转 fixed 后 wrapper 不塌陷，页面不跳动 */
+                            if (wrapper) wrapper.style.height = wrapper.offsetHeight + 'px';
+                            el.classList.add('vc-sticky');
+                            if (!stickyClose) {
+                                stickyClose = document.createElement('button');
+                                stickyClose.type = 'button';
+                                stickyClose.className = 'vc-sticky-close';
+                                stickyClose.setAttribute('aria-label', '关闭小窗');
+                                stickyClose.innerHTML = '&times;';
+                                stickyClose.addEventListener('click', function (e) {
+                                    e.stopPropagation();
+                                    art.pause(); /* pause 监听统一回收吸顶 */
+                                });
+                                el.appendChild(stickyClose);
+                            }
+                        };
+                        art.on('pause', unpinSticky);
+                            /* 观察原位 wrapper 而非容器：吸顶后容器转 fixed 进入视口，
+                               若观察容器自身会立即触发"重新可见"回调把吸顶撤销；
+                               wrapper 恒在文档流。吸顶条件：播放中 + 非全屏/灯箱 +
+                               移动端竖屏除外 + 露出不足一半且顶缘已越过视口顶
+                               （主体从顶部滚出，底部不可见不吸顶），滚回一半以上回原位 */
+                        el.fcStickyIO = new IntersectionObserver(function (entries) {
+                            entries.forEach(function (entry) {
+                                if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+                                    unpinSticky();
+                                } else if (videoEl && !videoEl.paused && !art.fullscreen && !art.fullscreenWeb && !el.fcLightbox
+                                    && !(isMobileUA && el.classList.contains('vc-portrait'))
+                                    && entry.boundingClientRect.top < 0) {
+                                    pinSticky();
+                                }
+                            });
+                        }, { threshold: [0, 0.5, 0.6] });
+                        el.fcStickyIO.observe(wrapper || el);
                     } else {
-                        var mask = document.createElement('div');
-                        mask.className = 'fc-video-mask';
-                        mask.addEventListener('click', function (e) {
-                            /* 只小窗口静音播放，不放大；蒙版移除后点击播放器才进灯箱 */
+                        art.muted = true;
+                        el.addEventListener('click', function (e) {
+                            /* 灯箱/系统全屏：完全交还 Artplayer 原生交互（视频区点击切换播放/暂停、
+                               控制条原生处理），配套 CSS 已让 .art-bottom 整层穿透、仅子控件可点 */
+                            if (el.fcLightbox || art.fullscreen) return;
+                            /* 蒙版点击放行给蒙版自己的监听（本捕获监听先于蒙版执行） */
+                            if (e.target && e.target.classList && e.target.classList.contains('fc-video-mask')) return;
+                            /* 窗口模式：屏蔽原生交互由主题接管——暂停→静音播放；播放中→开灯箱 */
                             e.stopPropagation();
-                            art.muted = true;
-                            var pp = art.play();
-                            if (pp && pp.catch) pp.catch(function () {});
-                            mask.remove();
-                        });
-                        el.appendChild(mask);
+                            if (art.paused) {
+                                art.muted = true;
+                                art.play();
+                            } else {
+                                openLightbox();
+                            }
+                        }, true);
+                        if (window.fcVideoAuto) {
+                            /* 单例观察器：fcInitMedia 会随分页加载反复执行，观察器全局只建一次；
+                               observe() 会立即回调当前交叉状态，首屏在可视范围内的视频直接开播 */
+                            if (!window.fcVideoAutoIO) {
+                                window.fcVideoAutoIO = new IntersectionObserver(function (entries) {
+                                    entries.forEach(function (entry) {
+                                        var target = entry.target;
+                                        var inst = target.fcArt;
+                                        if (!inst) return;
+                                        /* 系统全屏/灯箱不干预（灯箱为有声播放，不能被重置回静音） */
+                                        if (inst.fullscreen || target.fcLightbox) return;
+                                        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+                                            inst.muted = true;
+                                            var p = inst.play();
+                                            if (p && p.catch) p.catch(function () {});
+                                        } else if (entry.intersectionRatio < 0.5 && !inst.paused) {
+                                            try { inst.pause(); } catch (err) {}
+                                        }
+                                    });
+                                }, { threshold: [0, 0.5] });
+                            }
+                            el.fcArt = art;
+                            window.fcVideoAutoIO.observe(el);
+                        } else {
+                            var mask = document.createElement('div');
+                            mask.className = 'fc-video-mask';
+                            mask.addEventListener('click', function (e) {
+                                /* 只小窗口静音播放，不放大；蒙版移除后点击播放器才进灯箱 */
+                                e.stopPropagation();
+                                art.muted = true;
+                                var pp = art.play();
+                                if (pp && pp.catch) pp.catch(function () {});
+                                mask.remove();
+                            });
+                            el.appendChild(mask);
+                        }
                     }
                     updateTimeVisibility();
                 } catch (err) {}
