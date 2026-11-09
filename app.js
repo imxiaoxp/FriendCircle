@@ -1139,11 +1139,26 @@
         input.focus();
     }
 
+    /* 表情面板作用域：优先最近的表单，否则取触发按钮的父容器——评论框之外的组件
+       只要放置 .owo-trigger + .owo-box 即可复用整套面板 */
+    function fcOwOScope(trigger) {
+        return trigger.closest('form') || trigger.parentElement;
+    }
+
+    /* 表情插入目标：作用域内可用 data-owo-target 指定选择器，缺省取多行/单行输入框 */
+    function fcOwOTarget(box) {
+        var scope = box.closest('form') || box.parentElement;
+        if (!scope) return null;
+        var sel = scope.getAttribute('data-owo-target');
+        return (sel && scope.querySelector(sel)) ||
+            scope.querySelector('.fc-inline-input, textarea, input[type="text"], input:not([type])');
+    }
+
     document.addEventListener('click', function (e) {
         var trigger = e.target.closest('.owo-trigger');
         if (trigger) {
-            var form = trigger.closest('.fc-inline-form');
-            var box = form && form.querySelector('.owo-box');
+            var scope = fcOwOScope(trigger);
+            var box = scope && scope.querySelector('.owo-box');
             if (!box) return;
             var opening = box.hidden;
             fcCloseOwO();
@@ -1172,7 +1187,7 @@
         var item = e.target.closest('.owo-item');
         if (item) {
             var itemBox = item.closest('.owo-box');
-            var input = itemBox.closest('.fc-inline-form').querySelector('.fc-inline-input');
+            var input = fcOwOTarget(itemBox);
             // 图片表情插入 {:码:}（服务端渲染时还原为图片），文本表情直接插入
             fcInsertToInput(input, item.dataset.raw ? item.dataset.text : '{:' + item.dataset.text + ':}');
             return;
@@ -1329,7 +1344,8 @@
 
     /* ============ 图片灯箱 ============ */
     (function () {
-        var SEL = '.fc-photo > img, .fc-detail-text img, .fc-page-card img';
+        // 表情图片（.fc-owo-emoji）不参与灯箱
+        var SEL = '.fc-photo > img, .fc-detail-text img:not(.fc-owo-emoji), .fc-page-card img:not(.fc-owo-emoji)';
         var box = null, img = null, prevBtn = null, nextBtn = null, counter = null;
         var gallery = [], index = 0;
         var downX = 0, downY = 0, tracking = false, swiped = false, sliding = false;

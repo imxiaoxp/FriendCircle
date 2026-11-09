@@ -87,7 +87,8 @@ function fcOwOReplace($html)
                     }
                     foreach ($group['container'] as $item) {
                         if (!empty($item['text']) && !empty($item['icon'])) {
-                            $map[$item['text']] = $item['icon'];
+                            // 统一打标：正文/评论共用尺寸样式
+                            $map[$item['text']] = preg_replace('/<img\b/i', '<img class="fc-owo-emoji"', $item['icon'], 1);
                         }
                     }
                 }

@@ -15,7 +15,7 @@ if (!defined('__TYPECHO_ROOT_DIR__')) {
  *   前台渲染：fcMomentHtml() / page.php 输出正文前调用 FC_Media::parse()，
  *             不走 contentEx 钩子（核心在渲染前已预取 excerpt，主题钩子注册晚于首次渲染）
  *   编辑器按钮：admin/write-post.php、admin/write-page.php 的 bottom 钩子注入
- *   （插入音乐 / 插入视频 / 插入位置——位置走 location.php 解析 IPLocation 插件归属地）
+ *   （插入音乐 / 插入视频 / 插入表情 / 插入位置——位置走 location.php 解析 IP 归属地）
  *   前端初始化：assets/lib/aplayer.min.js、artplayer.min.js + app.js 的 fcInitMedia()
  */
 class FC_Media
@@ -199,7 +199,7 @@ class FC_Media
         return $out . '</div></div>';
     }
 
-    /** 后台编辑器按钮：插入音乐 / 插入视频 / 插入位置（bottom 钩子，$post 为内容编辑组件） */
+    /** 后台编辑器按钮：插入音乐 / 插入视频 / 插入表情 / 插入位置（bottom 钩子，$post 为内容编辑组件） */
     public static function editorButton($post = null)
     {
         /* 「插入位置」端点：受主题设置「插入位置按钮」开关控制（默认关，未开启不下发端点与按钮） */
@@ -208,6 +208,10 @@ class FC_Media
                 . json_encode(\Widget\Options::alloc()->themeUrl . '/location.php')
                 . ';</script>';
         }
+        /* 表情数据地址：编辑器「插入表情」按钮与前台评论共用同一份 OwO.json */
+        echo '<script>window.fcOwOUrl = '
+            . json_encode(\Widget\Options::alloc()->themeUrl . '/OwO.json')
+            . ';</script>';
         echo <<<'EOT'
 <script>
 (function () {
@@ -339,6 +343,98 @@ class FC_Media
         var lines = v[0].split(/\s*\n\s*/).filter(function (s) { return s; });
         return '[play]\n' + lines.join('\n') + '\n[/play]';
     });
+
+    /* 「插入表情」：与前台评论共用 OwO.json，图片表情插入 {:码:}，文本表情直接插入原文 */
+    (function () {
+        var li = document.createElement('li');
+        li.className = 'wmd-button';
+        li.title = '插入表情（OwO）';
+        li.innerHTML = '<span style="display:flex;align-items:center;justify-content:center;height:20px;font-size:14px;line-height:20px;">😀</span>';
+        li.onclick = function () {
+            if (!window.fcOwOUrl) { alert('表情数据地址不可用'); return; }
+            if (li.dataset.loading) return;
+            li.dataset.loading = '1';
+            fetch(window.fcOwOUrl).then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            }).then(function (data) {
+                delete li.dataset.loading;
+                openOwO(data);
+            }).catch(function () {
+                delete li.dataset.loading;
+                alert('表情加载失败，请重试');
+            });
+        };
+        row.appendChild(li);
+
+        function openOwO(data) {
+            var groups = Object.keys(data).filter(function (name) {
+                var g = data[name];
+                return g && Array.isArray(g.container) && g.container.length;
+            });
+            if (!groups.length) { alert('暂无表情'); return; }
+
+            var overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center;';
+            var box = document.createElement('div');
+            box.style.cssText = 'background:#fff;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:16px 18px;width:560px;max-width:94vw;max-height:80vh;display:flex;flex-direction:column;font-size:14px;';
+
+            var head = document.createElement('div');
+            head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;';
+            var title = document.createElement('p');
+            title.style.cssText = 'margin:0;font-weight:600;';
+            title.textContent = '插入表情';
+            var closeBtn = document.createElement('button');
+            closeBtn.type = 'button'; closeBtn.className = 'btn btn-s'; closeBtn.textContent = '关闭';
+            head.appendChild(title); head.appendChild(closeBtn);
+
+            var tabs = document.createElement('div');
+            tabs.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;';
+            var grid = document.createElement('div');
+            grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:6px;overflow-y:auto;padding:2px;';
+
+            box.appendChild(head); box.appendChild(tabs); box.appendChild(grid);
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+
+            function close() { overlay.remove(); }
+            closeBtn.onclick = close;
+            overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+
+            function render(idx) {
+                var group = data[groups[idx]];
+                grid.innerHTML = '';
+                group.container.forEach(function (item) {
+                    if (!item || !item.text || !item.icon) return;
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.title = item.text;
+                    btn.style.cssText = 'height:44px;padding:4px;border:1px solid #e5e5e5;background:#fafafa;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;';
+                    // icon 为 OwO.json 的图标 HTML（彩蛋表情为图片）
+                    btn.innerHTML = item.icon;
+                    btn.onclick = function () {
+                        insertText(group.type === 'image' ? '{:' + item.text + ':}' : item.text);
+                        close();
+                    };
+                    grid.appendChild(btn);
+                });
+            }
+
+            groups.forEach(function (name, i) {
+                var tab = document.createElement('button');
+                tab.type = 'button';
+                tab.className = 'btn btn-s' + (0 === i ? ' primary' : '');
+                tab.textContent = name;
+                tab.onclick = function () {
+                    Array.prototype.forEach.call(tabs.children, function (t) { t.className = 'btn btn-s'; });
+                    tab.className = 'btn btn-s primary';
+                    render(i);
+                };
+                tabs.appendChild(tab);
+            });
+            render(0);
+        }
+    })();
 
     if (window.fcLocationEndpoint) {
         makeLocationButton('插入当前位置（IP 归属地，填充「所在位置」字段）', '📍');

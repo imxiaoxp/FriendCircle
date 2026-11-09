@@ -5,14 +5,14 @@
  *
  * @package FriendCircle
  * @author Xiao
- * @version 1.1.3
+ * @version 1.1.4
  * @link https://xiao.cn.mt
  */
 if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 
 /* 主题版本号：控制台横幅显示，与 index.php 头注释 @version 保持一致 */
 if (!defined('FC_VERSION')) {
-    define('FC_VERSION', '1.1.3');
+    define('FC_VERSION', '1.1.4');
 }
 
 // 评论渲染与查询函数集（fcCommentToken / fcInlineCommentsHtml / fcInlineCommentForm 等）
@@ -774,14 +774,18 @@ function fcMomentHtml($archive, $detail = false)
     // 输出一致的提取逻辑；详情页在正文原位渲染播放器
     $fcRaw = FC_Media::parse((string) $archive->content);
     if ($detail) {
-        $text = fcLinkBlank($fcRaw);
+        // 正文里的 {:表情码:} 还原为表情图片（与评论共用 OwO.json）
+        $text = fcOwOReplace(fcLinkBlank($fcRaw));
     } else {
         list($fcPlayers, $fcClean) = fcExtractPlayers($fcRaw);
         // 播放器仅首页独立输出：去掉分集切换按钮（fc-video 无该结构，不受影响）
         $fcVideo = preg_replace('/<div class="video-tabs">.*?<\/div>/s', '', $fcPlayers);
-        $text = fcMomentText($fcClean, true);
+        $text = fcOwOReplace(fcMomentText($fcClean, true));
     }
-    $images = $detail ? array() : fcImages($fcRaw);
+    // 九宫格最多 9 张，超出部分在第 9 张上以「+N」提示
+    $fcAllImages = $detail ? array() : fcImages($fcRaw, PHP_INT_MAX);
+    $images = array_slice($fcAllImages, 0, 9);
+    $fcMoreImages = count($fcAllImages) - count($images);
     $location = trim((string) ($archive->fields->location ?? ''));
     // $archive->date('Y-m-d') 是输出型魔术调用（直接 echo 且返回 null），
     // 必须取 Date 对象 format 返回值，否则日期裸露在列表外、卡片内时间为空
@@ -824,9 +828,12 @@ function fcMomentHtml($archive, $detail = false)
 
             <?php if ($images): ?>
                 <div class="fc-gallery">
-                    <?php foreach ($images as $image): ?>
+                    <?php foreach ($images as $fcIndex => $image): ?>
                         <div class="fc-photo">
                             <img src="<?php echo htmlspecialchars($image, ENT_QUOTES, 'UTF-8'); ?>" alt="" loading="lazy">
+                            <?php if (8 === $fcIndex && $fcMoreImages > 0): ?>
+                                <span class="fc-photo-more">+<?php echo (int) $fcMoreImages; ?></span>
+                            <?php endif; ?>
                         </div>
                     <?php endforeach; ?>
                 </div>
