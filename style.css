@@ -2233,6 +2233,7 @@ pre[class*=language-].line-numbers>code {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .fc-card-body .video-tab:hover {
@@ -2294,8 +2295,9 @@ pre[class*=language-].line-numbers>code {
     cursor: pointer;
 }
 
-/* 关闭自动播放时的一次性启动蒙版：透明覆盖整个播放器，接管首次点击（静音播放并移除），
-   视觉上仍透出 Artplayer 的居中大播放键；蒙版移除后点击播放器进灯箱 */
+/* 窗口播放器未播放（暂停/停止）时的透明蒙版：覆盖整个播放器接管点击（静音播放），
+   播放后随 play 事件自动移除；视觉上透出 Artplayer 的居中大播放键，
+   移除后点击播放器即进灯箱（开启/关闭自动播放共用同一套交互） */
 .fc-video .fc-video-mask {
     position: absolute;
     inset: 0;

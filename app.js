@@ -639,12 +639,56 @@
         } catch (e) {}
     }
 
+    /* 以服务端 cookie 为唯一事实源：游客表单的 author/mail/url 隐藏域由 PHP 按 cookie
+       渲染（服务端写的 cookie 是 HttpOnly，JS 读不到），初始化时据此校正 localStorage：
+       服务端有身份 → 回填/覆盖本地；服务端已无身份 → 清掉本地残留，避免资料区仍显示
+       服务端已不认识的游客。登录态表单没有游客字段，或页面无评论表单时保持本地不动 */
+    function fcSyncGuestFromServer() {
+        var forms = document.querySelectorAll('.fc-inline-form');
+        var form = null;
+        for (var i = 0; i < forms.length; i++) {
+            if (forms[i].querySelector('[name="author"]')) {
+                form = forms[i];
+                break;
+            }
+        }
+        if (!form) return;
+        var server = {};
+        ['author', 'mail', 'url'].forEach(function (name) {
+            var input = form.querySelector('[name="' + name + '"]');
+            if (input && input.value.trim()) server[name] = input.value.trim();
+        });
+        var local = {};
+        try {
+            local = JSON.parse(localStorage.getItem('fc-commenter') || '{}') || {};
+        } catch (e) {}
+        if (!server.author) {
+            /* cookie 已过期/被删：本地记录同步作废 */
+            if (local.author) {
+                try { localStorage.removeItem('fc-commenter'); } catch (e) {}
+            }
+            return;
+        }
+        if (local.author === server.author
+            && (local.mail || '') === (server.mail || '')
+            && (local.url || '') === (server.url || '')
+            && local.ts && Date.now() - local.ts <= FC_REMEMBER_TTL) {
+            return; /* 两侧一致且未过期：保留本地 ts（续期时间仍以评论成功为准） */
+        }
+        server.ts = Date.now();
+        try {
+            localStorage.setItem('fc-commenter', JSON.stringify(server));
+        } catch (e) {}
+    }
+
     function fcSaveCommenter(form) {
         var info = { ts: Date.now() };
         ['author', 'mail', 'url'].forEach(function (name) {
             var input = form.querySelector('[name="' + name + '"]');
             if (input && input.value.trim()) info[name] = input.value.trim();
         });
+        /* 登录态表单没有游客字段：不覆盖之前留下的游客本地记录 */
+        if (!info.author) return;
         try {
             localStorage.setItem('fc-commenter', JSON.stringify(info));
         } catch (e) {}
@@ -1497,6 +1541,61 @@
         });
     })();
 
+    /* ============ 视频观看记录（分集 + 进度） ============ */
+    /* 键为分集列表首集地址：同一动态的列表页与详情页键一致；
+       记录分集序号与秒数，详情页初始化时按记录选集并续播 */
+    var FC_VH_KEY = 'fc-video-history';
+    var FC_VH_MAX = 30;
+    function fcVhRead() {
+        try {
+            var raw = localStorage.getItem(FC_VH_KEY);
+            var data = raw ? JSON.parse(raw) : {};
+            return data && typeof data === 'object' ? data : {};
+        } catch (e) {
+            return {};
+        }
+    }
+    function fcVhWrite(data) {
+        try {
+            localStorage.setItem(FC_VH_KEY, JSON.stringify(data));
+        } catch (e) {}
+    }
+    function fcVhGet(key) {
+        if (!key) return null;
+        var item = fcVhRead()[key];
+        return item && typeof item.t === 'number' ? item : null;
+    }
+    function fcVhSave(key, index, time) {
+        if (!key) return;
+        var data = fcVhRead();
+        data[key] = { i: index || 0, t: Math.max(0, Math.round(time || 0)), ts: Date.now() };
+        /* 仅保留最近 FC_VH_MAX 条，避免 localStorage 无限增长 */
+        var keys = Object.keys(data);
+        if (keys.length > FC_VH_MAX) {
+            keys.sort(function (a, b) { return (data[a].ts || 0) - (data[b].ts || 0); });
+            keys.slice(0, keys.length - FC_VH_MAX).forEach(function (k) { delete data[k]; });
+        }
+        fcVhWrite(data);
+    }
+    function fcVhClear(key) {
+        var data = fcVhRead();
+        if (!data[key]) return;
+        delete data[key];
+        fcVhWrite(data);
+    }
+    /* 各播放器登记写入函数：PJAX 切页不触发 pause/pagehide，离开前主动落盘 */
+    var fcVhSavers = [];
+    function fcVhFlush() {
+        fcVhSavers.forEach(function (item) {
+            if (!item.el.isConnected) return;
+            try { item.save(); } catch (e) {}
+        });
+        /* 顺手剔除已随换页移除的播放器，避免登记表在长会话中持续增长 */
+        fcVhSavers = fcVhSavers.filter(function (item) { return item.el.isConnected; });
+    }
+    window.fcVideoHistoryFlush = fcVhFlush;
+    window.addEventListener('pagehide', fcVhFlush);
+
     /* ============ 短代码播放器初始化（APlayer / ArtPlayer） ============ */
     /* media.php 输出 .aplayer / .fc-video 容器，首次与 PJAX 切页后均需执行；
        APlayer 游离 audio 在 play 时手动标记互斥时间戳，ArtPlayer 的 video 在 DOM 内自动接管 */
@@ -1569,6 +1668,10 @@
             });
         }
         if (window.Artplayer) {
+            /* 网页全屏默认留在原位：播放器会被 .fc-page 的层叠上下文困住，
+               被根级悬浮元素（访问统计条 / 悬浮按钮）遮挡。改为全屏期间挂到 body 下，
+               退出时 Artplayer 自动搬回容器 */
+            window.Artplayer.FULLSCREEN_WEB_IN_BODY = true;
             document.querySelectorAll('.fc-video').forEach(function (el) {
                 if (el.fcVideoInited || !el.dataset.url) return;
                 el.fcVideoInited = true;
@@ -1582,7 +1685,6 @@
                         .filter(function (s) { return s !== ''; });
                     var switchTab = null;
                     if (urls.length > 1) {
-                        el.fcTabIndex = 0;
                         switchTab = function (index) {
                             if (!urls[index] || index === el.fcTabIndex) return;
                             el.fcTabIndex = index;
@@ -1611,10 +1713,16 @@
                        fc-archive-bar 标记，应走首页列表逻辑（静音自动播放+灯箱） */
                     var detailBar = document.querySelector('.fc-detail-bar');
                     var isDetail = !!detailBar && !detailBar.classList.contains('fc-archive-bar');
+                    /* 观看记录：同一动态的分集列表首集地址作为键（列表页与详情页一致）；
+                       列表页与详情页都按记录选集并续播——详情页看完返回列表也接着进度 */
+                    var histKey = urls[0] || el.dataset.url || '';
+                    var hist = fcVhGet(histKey);
+                    var startIndex = (hist && hist.i > 0 && hist.i < urls.length) ? hist.i : 0;
+                    if (urls.length > 1) el.fcTabIndex = startIndex;
                     var isMobileUA = /Android|iPhone|iPad|iPod|Mobile|Silk/i.test(navigator.userAgent);
                     var art = new Artplayer({
                         container: el,
-                        url: el.dataset.url,
+                        url: urls[startIndex] || el.dataset.url,
                         poster: el.dataset.pic || '',
                         setting: true,
                         playbackRate: true,
@@ -1635,6 +1743,28 @@
                             }
                         }] : []
                     });
+                    /* 按记录选集：同步分集条高亮与「下一集」按钮显隐 */
+                    if (startIndex > 0) {
+                        tabs.forEach(function (t, i) { t.classList.toggle('active', i === startIndex); });
+                        if (startIndex >= urls.length - 1) {
+                            var firstNext = el.querySelector('.art-icon-next');
+                            if (firstNext) {
+                                firstNext.style.display = 'none';
+                                if (firstNext.parentElement) firstNext.parentElement.style.display = 'none';
+                            }
+                        }
+                    }
+                    /* 按记录续播：首次 ready 时定位（自动播放的 ready 监听注册在后，
+                       先定位再播放）；记录已接近片尾则不续播，从头开始 */
+                    if (hist && hist.t > 0) {
+                        art.once('ready', function () {
+                            var t = hist.t;
+                            if (art.duration && t > art.duration - 1) t = 0;
+                            if (t > 0) {
+                                try { art.currentTime = t; } catch (e) {}
+                            }
+                        });
+                    }
                     /* 竖屏自适应（同 VideoCollector）：竖屏时包装器按真实宽高比显示
                        （40vh 上限由 CSS 控制），并联动窗口模式控件显隐 */
                     /* 单地址视频无 .play-container（[Video] 与单行 [play]），
@@ -1679,14 +1809,37 @@
                         if (videoEl.videoWidth) applyOrientation();
                         videoEl.addEventListener('loadedmetadata', applyOrientation);
                     }
+                    /* 观看记录：播放中每 3 秒写入一次，暂停立即写入，看完清除；
+                       分集序号取 el.fcTabIndex，切集后自然写入新集进度 */
+                    var vhSave = function () {
+                        var v = art.template && art.template.$video;
+                        if (!v || !v.duration || !isFinite(v.currentTime)) return;
+                        if (v.ended || v.currentTime > v.duration - 2) {
+                            fcVhClear(histKey);
+                            return;
+                        }
+                        fcVhSave(histKey, urls.length > 1 ? (el.fcTabIndex || 0) : 0, v.currentTime);
+                    };
+                    var vhLast = 0;
+                    art.on('timeupdate', function () {
+                        var now = Date.now();
+                        if (now - vhLast < 3000) return;
+                        vhLast = now;
+                        vhSave();
+                    });
+                    art.on('pause', vhSave);
+                    art.on('ended', function () { fcVhClear(histKey); });
+                    fcVhSavers.push({ el: el, save: vhSave });
                     art.on('resize', updateTimeVisibility);
                     /* 容器状态标记：灯箱/系统全屏时给 .fc-video 加 fc-arts，CSS 据此切换控件显隐，
                        切换同时重估时间显隐 */
                     var syncArtState = function () {
                         el.classList.toggle('fc-arts', !!(art.fullscreen || art.fullscreenWeb || el.fcLightbox));
                         updateTimeVisibility();
+                        /* 灯箱/全屏进出后重估蒙版：列表页暂停态回到窗口要重新盖上 */
+                        if (typeof el.fcSyncMask === 'function') el.fcSyncMask();
                     };
-                    /* 声音状态机：灯箱/系统全屏一律有声、回容器一律静音续播，
+                    /* 声音状态机：灯箱/系统全屏一律有声、回容器恢复静音，
                        两条路径走同一幂等函数，覆盖嵌套进出的全部路径组合；
                        详情页窗口视频本身有声，退出全屏后保持原音量不静音 */
                     var syncMuted = function () {
@@ -1699,8 +1852,9 @@
                                 window.fcMarkMediaStarted(v);
                             }
                         } else if (!el.classList.contains('vc-detail')) {
+                            /* 只恢复静音、不主动续播：灯箱内主动暂停的视频回到窗口应保持暂停
+                               （由蒙版接管点击），播放中则本来就未被中断，继续静音播放 */
                             art.muted = true;
-                            if (art.paused) art.play();
                         }
                     };
                     art.on('fullscreen', function () {
@@ -1767,7 +1921,9 @@
                     if (isDetail) {
                         art.muted = false;
                         el.classList.add('vc-detail');
-                        if (window.fcVideoAuto) {
+                        /* 详情页可能同时存在多个播放器：开启自动播放时只播页面第一个，
+                           其余等用户手动点播 */
+                        if (window.fcVideoAuto && document.querySelector('.fc-video') === el) {
                             /* 进页面自动播放一次（有声），被浏览器策略拦截则停在首帧。
                                之后播放/暂停完全由用户与吸顶逻辑控制，不随滚动自动启停 */
                             art.on('ready', function () {
@@ -1847,6 +2003,37 @@
                                 openLightbox();
                             }
                         }, true);
+                        /* 窗口播放器未播放（暂停/停止）时覆盖透明蒙版：点击蒙版静音播放，
+                           蒙版随播放事件自动移除；播放中点击播放器即开灯箱
+                           （开启/关闭自动播放共用同一套点击逻辑） */
+                        var mask = document.createElement('div');
+                        mask.className = 'fc-video-mask';
+                        mask.addEventListener('click', function (e) {
+                            /* 只小窗口静音播放，不放大；蒙版移除后点击播放器才进灯箱 */
+                            e.stopPropagation();
+                            art.muted = true;
+                            var pp = art.play();
+                            if (pp && pp.catch) pp.catch(function () {});
+                        });
+                        var syncMask = function () {
+                            /* 灯箱/全屏内不盖蒙版（交还原生交互） */
+                            if (art.fullscreen || art.fullscreenWeb || el.fcLightbox) {
+                                if (mask.parentNode) mask.remove();
+                                return;
+                            }
+                            var paused = videoEl ? videoEl.paused : art.paused;
+                            if (paused) {
+                                if (!mask.parentNode) el.appendChild(mask);
+                            } else if (mask.parentNode) {
+                                mask.remove();
+                            }
+                        };
+                        ['play', 'pause', 'ended'].forEach(function (ev) {
+                            art.on(ev, syncMask);
+                        });
+                        /* 暴露给 syncArtState：灯箱/全屏进出后重估蒙版 */
+                        el.fcSyncMask = syncMask;
+                        syncMask();
                         if (window.fcVideoAuto) {
                             /* 单例观察器：fcInitMedia 会随分页加载反复执行，观察器全局只建一次；
                                observe() 会立即回调当前交叉状态，首屏在可视范围内的视频直接开播 */
@@ -1870,18 +2057,6 @@
                             }
                             el.fcArt = art;
                             window.fcVideoAutoIO.observe(el);
-                        } else {
-                            var mask = document.createElement('div');
-                            mask.className = 'fc-video-mask';
-                            mask.addEventListener('click', function (e) {
-                                /* 只小窗口静音播放，不放大；蒙版移除后点击播放器才进灯箱 */
-                                e.stopPropagation();
-                                art.muted = true;
-                                var pp = art.play();
-                                if (pp && pp.catch) pp.catch(function () {});
-                                mask.remove();
-                            });
-                            el.appendChild(mask);
                         }
                     }
                     updateTimeVisibility();
@@ -1988,7 +2163,10 @@
     /* 包含随页面替换而需重新绑定/重扫的部分；document 级委托交互与静态元素
        （顶栏、音乐、浮钮、弹窗、灯箱）均一次性绑定，不在此列 */
     window.fcInitPage = function () {
+        /* 先用服务端 cookie 校正本地游客记录，再渲染资料区/浮钮 */
+        fcSyncGuestFromServer();
         fcInitProfile();
+        fcSyncForgetBtn();
         fcInitTime();
         fcInitMedia();
         var loadmore = document.getElementById('fc-loadmore');
@@ -2336,6 +2514,8 @@ window.addEventListener('pagehide', function () {
     function navigate(url, push) {
         if (navigating) return;
         navigating = true;
+        /* 视频观看记录：PJAX 切页不触发 pause/pagehide，离开前主动写入当前进度 */
+        if (typeof window.fcVideoHistoryFlush === 'function') window.fcVideoHistoryFlush();
         /* 列表滚动锚点：离开列表页（首页/作者/分类/标签/搜索/日期均有 .fc-list）
            前记录当前 URL 与滚动位置，返回时由 fcInitPage 恢复 */
         try {

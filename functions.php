@@ -5,14 +5,14 @@
  *
  * @package FriendCircle
  * @author Xiao
- * @version 1.1.4
+ * @version 1.1.5
  * @link https://xiao.cn.mt
  */
 if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 
 /* 主题版本号：控制台横幅显示，与 index.php 头注释 @version 保持一致 */
 if (!defined('FC_VERSION')) {
-    define('FC_VERSION', '1.1.4');
+    define('FC_VERSION', '1.1.5');
 }
 
 // 评论渲染与查询函数集（fcCommentToken / fcInlineCommentsHtml / fcInlineCommentForm 等）

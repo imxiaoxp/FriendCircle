@@ -165,16 +165,40 @@ class FC_Media
 
     /** [play]地址[/play]（VideoCollector 兼容，支持多行多个地址）
      *  单地址 → 一个 ArtPlayer 容器；多地址 → 一个播放器 + 分集切换
+     *  每行可用「|」自定义分集标题（标题|地址 或 地址|标题），不写则用序号
      *  （复刻原插件结构：首页提取后剔除 video-tabs 只播第一集，详情页可切换） */
     private static function renderPlay($m)
     {
         $inner = preg_replace('/<br\s*\/?>/i', "\n", $m[1]);
 
         $urls = array();
-        foreach (preg_split('/\s*\n\s*/', trim($inner)) as $url) {
-            $url = self::cleanValue($url);
+        $titles = array();
+        foreach (preg_split('/\s*\n\s*/', trim($inner)) as $line) {
+            $line = self::cleanValue(str_replace('｜', '|', $line));
+            if ('' === $line) {
+                continue;
+            }
+            $title = '';
+            if (false !== strpos($line, '|')) {
+                /* 以哪一侧是地址判定书写顺序，均非地址则整行按地址处理（地址本身含 | 的情况） */
+                list($left, $right) = explode('|', $line, 2);
+                $left = trim($left);
+                $right = trim($right);
+                if (self::isUrl($right)) {
+                    $url = $right;
+                    $title = $left;
+                } elseif (self::isUrl($left)) {
+                    $url = $left;
+                    $title = $right;
+                } else {
+                    $url = $line;
+                }
+            } else {
+                $url = $line;
+            }
             if ('' !== $url) {
                 $urls[] = $url;
+                $titles[] = $title;
             }
         }
         if (empty($urls)) {
@@ -193,10 +217,18 @@ class FC_Media
             . '<div class="fc-video" data-url="' . self::esc($urls[0]) . '" data-urls="' . $urlsAttr . '"></div></div>'
             . '<div class="video-tabs">';
         foreach ($urls as $i => $u) {
+            $label = ('' !== $titles[$i]) ? $titles[$i] : (string) ($i + 1);
             $out .= '<span class="video-tab' . (0 === $i ? ' active' : '')
-                . '" data-url="' . self::esc($u) . '">' . ($i + 1) . '</span>';
+                . '" data-url="' . self::esc($u) . '" title="' . self::esc($label) . '">'
+                . self::esc($label) . '</span>';
         }
         return $out . '</div></div>';
+    }
+
+    /** 分集行里的地址判定：协议开头（含 //）或站内绝对路径 */
+    private static function isUrl($value)
+    {
+        return (bool) preg_match('#^(?:https?:)?//|^/#i', (string) $value);
     }
 
     /** 后台编辑器按钮：插入音乐 / 插入视频 / 插入表情 / 插入位置（bottom 钩子，$post 为内容编辑组件） */
@@ -337,7 +369,7 @@ class FC_Media
     });
 
     makeButton('插入视频（ArtPlayer）', '▶', [
-        { label: '视频文件地址（每行一个，多个将生成分集播放器）', required: true, multiline: true }
+        { label: '视频文件地址（每行一个，多个将生成分集播放器；可写成「标题|地址」自定义分集标题）', required: true, multiline: true }
     ], function (v) {
         /* 统一输出 [play] 格式：单地址一个播放器，多地址自动分集 */
         var lines = v[0].split(/\s*\n\s*/).filter(function (s) { return s; });
