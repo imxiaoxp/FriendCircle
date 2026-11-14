@@ -1577,12 +1577,6 @@
         }
         fcVhWrite(data);
     }
-    function fcVhClear(key) {
-        var data = fcVhRead();
-        if (!data[key]) return;
-        delete data[key];
-        fcVhWrite(data);
-    }
     /* 各播放器登记写入函数：PJAX 切页不触发 pause/pagehide，离开前主动落盘 */
     var fcVhSavers = [];
     function fcVhFlush() {
@@ -1755,14 +1749,10 @@
                         }
                     }
                     /* 按记录续播：首次 ready 时定位（自动播放的 ready 监听注册在后，
-                       先定位再播放）；记录已接近片尾则不续播，从头开始 */
+                       先定位再播放）；播完的记录保留片尾位置，原样定位 */
                     if (hist && hist.t > 0) {
                         art.once('ready', function () {
-                            var t = hist.t;
-                            if (art.duration && t > art.duration - 1) t = 0;
-                            if (t > 0) {
-                                try { art.currentTime = t; } catch (e) {}
-                            }
+                            try { art.currentTime = hist.t; } catch (e) {}
                         });
                     }
                     /* 竖屏自适应（同 VideoCollector）：竖屏时包装器按真实宽高比显示
@@ -1809,16 +1799,14 @@
                         if (videoEl.videoWidth) applyOrientation();
                         videoEl.addEventListener('loadedmetadata', applyOrientation);
                     }
-                    /* 观看记录：播放中每 3 秒写入一次，暂停立即写入，看完清除；
-                       分集序号取 el.fcTabIndex，切集后自然写入新集进度 */
+                    /* 观看记录：播放中每 3 秒写入一次，暂停立即写入；播完保留结尾进度
+                       （记录定位到片尾、分集序号一并保留），分集序号取 el.fcTabIndex */
                     var vhSave = function () {
                         var v = art.template && art.template.$video;
                         if (!v || !v.duration || !isFinite(v.currentTime)) return;
-                        if (v.ended || v.currentTime > v.duration - 2) {
-                            fcVhClear(histKey);
-                            return;
-                        }
-                        fcVhSave(histKey, urls.length > 1 ? (el.fcTabIndex || 0) : 0, v.currentTime);
+                        var time = v.currentTime;
+                        if (v.ended || time > v.duration - 2) time = v.duration;
+                        fcVhSave(histKey, urls.length > 1 ? (el.fcTabIndex || 0) : 0, time);
                     };
                     var vhLast = 0;
                     art.on('timeupdate', function () {
@@ -1828,7 +1816,7 @@
                         vhSave();
                     });
                     art.on('pause', vhSave);
-                    art.on('ended', function () { fcVhClear(histKey); });
+                    art.on('ended', vhSave);
                     fcVhSavers.push({ el: el, save: vhSave });
                     art.on('resize', updateTimeVisibility);
                     /* 容器状态标记：灯箱/系统全屏时给 .fc-video 加 fc-arts，CSS 据此切换控件显隐，
