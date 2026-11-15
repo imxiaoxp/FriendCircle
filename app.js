@@ -2016,12 +2016,29 @@
                                 mask.remove();
                             }
                         };
-                        ['play', 'pause', 'ended'].forEach(function (ev) {
+                        ['play', 'pause', 'ended', 'ready'].forEach(function (ev) {
                             art.on(ev, syncMask);
                         });
                         /* 暴露给 syncArtState：灯箱/全屏进出后重估蒙版 */
                         el.fcSyncMask = syncMask;
                         syncMask();
+                        /* 同一屏可能同时存在多个播放器：中间的视频不足 50% 不会自动播放，
+                           滚动期间按实时暂停状态补盖蒙版（单例监听，rAF 合并），
+                           确保任何暂停的窗口播放器都有可点的透明蒙版 */
+                        if (!window.fcMaskScrollBound) {
+                            window.fcMaskScrollBound = true;
+                            var maskTick = false;
+                            window.addEventListener('scroll', function () {
+                                if (maskTick) return;
+                                maskTick = true;
+                                requestAnimationFrame(function () {
+                                    maskTick = false;
+                                    document.querySelectorAll('.fc-video').forEach(function (box) {
+                                        if (typeof box.fcSyncMask === 'function') box.fcSyncMask();
+                                    });
+                                });
+                            }, { passive: true });
+                        }
                         if (window.fcVideoAuto) {
                             /* 单例观察器：fcInitMedia 会随分页加载反复执行，观察器全局只建一次；
                                observe() 会立即回调当前交叉状态，首屏在可视范围内的视频直接开播 */
@@ -2040,6 +2057,10 @@
                                         } else if (entry.intersectionRatio < 0.5 && !inst.paused) {
                                             try { inst.pause(); } catch (err) {}
                                         }
+                                        /* 滑动自动播放/暂停后主动重估蒙版：不依赖 play/pause
+                                           事件到达顺序，暂停态必定盖上可点击的透明蒙版
+                                           （观察器单例复用，须按 target 取各自的蒙版函数） */
+                                        if (typeof target.fcSyncMask === 'function') target.fcSyncMask();
                                     });
                                 }, { threshold: [0, 0.5] });
                             }
