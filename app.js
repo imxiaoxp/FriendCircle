@@ -1593,6 +1593,101 @@
     /* ============ 短代码播放器初始化（APlayer / ArtPlayer） ============ */
     /* media.php 输出 .aplayer / .fc-video 容器，首次与 PJAX 切页后均需执行；
        APlayer 游离 audio 在 play 时手动标记互斥时间戳，ArtPlayer 的 video 在 DOM 内自动接管 */
+    /* ============ HLS（m3u8）播放支持 ============ */
+    /* 统一经 Artplayer customType 接管 m3u8：有 MSE 的浏览器优先 hls.js（首次遇到才加载），
+       仅无 MSE 的（iOS Safari 等）退回 video 原生 HLS。
+       不能按 canPlayType 判断——Edge / 部分内核会声称支持原生 HLS 但实际播不了 */
+    var fcMseOk = (function () {
+        try {
+            return !!(window.MediaSource &&
+                typeof MediaSource.isTypeSupported === 'function' &&
+                MediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E,mp4a.40.2"'));
+        } catch (e) {
+            return false;
+        }
+    })();
+    var fcHlsQueue = null;
+    function fcLoadHls(cb) {
+        if (window.Hls) { cb(); return; }
+        if (fcHlsQueue) { fcHlsQueue.push(cb); return; }
+        fcHlsQueue = [cb];
+        var s = document.createElement('script');
+        s.src = (window.fcThemeUrl || '') + '/assets/lib/hls.min.js';
+        s.onload = function () {
+            var queue = fcHlsQueue || [];
+            fcHlsQueue = null;
+            queue.forEach(function (fn) { fn(); });
+        };
+        s.onerror = function () { fcHlsQueue = null; };
+        document.head.appendChild(s);
+    }
+    /* 是否为 m3u8：路径以 .m3u8 结尾，或地址被代理包进查询参数
+       （如 ?action=m3u8&url=https://源站/…/index.m3u8），此时扩展名判定会拿到 php */
+    function fcIsHls(url) {
+        return /\.m3u8(?:[?#&]|$)/i.test(String(url || ''));
+    }
+    /* m3u8 挂载（分集切换时先销毁旧实例）；致命错误按类型重连或恢复 */
+    function fcAttachHls(video, src, player) {
+        if (player.fcHls) {
+            try { player.fcHls.destroy(); } catch (e) {}
+            player.fcHls = null;
+        }
+        /* 播放列表取不到时（如代理路由 404）有限重试后提示，避免无反馈地空转 */
+        var fail = function (notice) {
+            if (player.fcHls) {
+                try { player.fcHls.destroy(); } catch (e) {}
+                player.fcHls = null;
+            }
+            if (notice) {
+                try { player.notice.show = notice; } catch (e) {}
+            }
+        };
+        var attach = function () {
+            var Hls = window.Hls;
+            if (Hls && Hls.isSupported()) {
+                var hls = new Hls({ enableWorker: true });
+                var netTries = 0;
+                player.fcHls = hls;
+                hls.on(Hls.Events.ERROR, function (evt, data) {
+                    if (!data || !data.fatal) return;
+                    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                        netTries += 1;
+                        if (netTries > 3) {
+                            var code = data.response && data.response.code ? 'HTTP ' + data.response.code : '网络错误';
+                            fail('视频地址无法访问（' + code + '）');
+                            return;
+                        }
+                        try { hls.startLoad(); } catch (e) {}
+                    } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                        try { hls.recoverMediaError(); } catch (e) {}
+                    } else {
+                        fail('视频格式不支持或已失效');
+                    }
+                });
+                /* 清单解析完成：列表页自动播放若在 hls 就绪前发起过，这里补一次静音起播 */
+                hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                    netTries = 0;
+                    if (player.fcWantPlay && player.paused) {
+                        player.muted = true;
+                        var pp = player.play();
+                        if (pp && pp.catch) pp.catch(function () {});
+                    }
+                });
+                hls.attachMedia(video);
+                hls.loadSource(src);
+                return;
+            }
+            /* 无 MSE（iOS Safari 等）：退回原生 HLS */
+            if (video.canPlayType && video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = src;
+                return;
+            }
+            fail(window.Hls ? '当前浏览器不支持 m3u8 播放' : '播放组件加载失败');
+        };
+        /* 有 MSE 才按需下载 hls.js；无 MSE 直接走原生，不额外请求 */
+        if (window.Hls || !fcMseOk) attach(); else fcLoadHls(attach);
+    }
+
     function fcInitMedia() {
         if (window.APlayer) {
             document.querySelectorAll('.aplayer').forEach(function (el) {
@@ -1683,8 +1778,17 @@
                             if (!urls[index] || index === el.fcTabIndex) return;
                             el.fcTabIndex = index;
                             tabs.forEach(function (t, i) { t.classList.toggle('active', i === index); });
+                            /* 切集前销毁旧 hls 实例：否则切到普通地址后它仍往同一 video 写分片 */
+                            if (art.fcHls) {
+                                try { art.fcHls.destroy(); } catch (e) {}
+                                art.fcHls = null;
+                            }
+                            /* 逐集声明类型：m3u8 走 HLS，普通地址清空按扩展名处理 */
+                            art.option.type = fcIsHls(urls[index]) ? 'm3u8' : '';
                             art.switchUrl(urls[index]);
-                            /* 切换分集后自动播放新分集（被浏览器策略拦截则停在首帧） */
+                            /* 切换分集后自动播放新分集（被浏览器策略拦截则停在首帧）；
+                               m3u8 需等清单解析，置起播意图由 MANIFEST_PARSED 补播 */
+                            art.fcWantPlay = true;
                             var sp = art.play();
                             if (sp && sp.catch) sp.catch(function () {});
                             /* 最后一集隐藏「下一集」按钮（同插件） */
@@ -1714,10 +1818,16 @@
                     var startIndex = (hist && hist.i > 0 && hist.i < urls.length) ? hist.i : 0;
                     if (urls.length > 1) el.fcTabIndex = startIndex;
                     var isMobileUA = /Android|iPhone|iPad|iPod|Mobile|Silk/i.test(navigator.userAgent);
+                    var firstSrc = urls[startIndex] || el.dataset.url;
                     var art = new Artplayer({
                         container: el,
-                        url: urls[startIndex] || el.dataset.url,
+                        url: firstSrc,
+                        /* m3u8 显式声明类型：查询参数包裹的地址扩展名不是 m3u8，
+                           必须由这里指定才会走 customType；普通地址留空按扩展名自动判定 */
+                        type: fcIsHls(firstSrc) ? 'm3u8' : '',
                         poster: el.dataset.pic || '',
+                        /* m3u8 统一由 customType 接管：处理器内部按 MSE 能力选 hls.js 或原生 */
+                        customType: { m3u8: fcAttachHls },
                         setting: true,
                         playbackRate: true,
                         fullscreen: true,
@@ -1986,6 +2096,7 @@
                             e.stopPropagation();
                             if (art.paused) {
                                 art.muted = true;
+                                art.fcWantPlay = true;
                                 art.play();
                             } else {
                                 openLightbox();
@@ -2000,6 +2111,7 @@
                             /* 只小窗口静音播放，不放大；蒙版移除后点击播放器才进灯箱 */
                             e.stopPropagation();
                             art.muted = true;
+                            art.fcWantPlay = true;
                             var pp = art.play();
                             if (pp && pp.catch) pp.catch(function () {});
                         });
@@ -2052,9 +2164,13 @@
                                         if (inst.fullscreen || target.fcLightbox) return;
                                         if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
                                             inst.muted = true;
+                                            /* 记录起播意图：m3u8 在 hls 清单就绪前 play 会失败，
+                                               MANIFEST_PARSED 时据此补播 */
+                                            inst.fcWantPlay = true;
                                             var p = inst.play();
                                             if (p && p.catch) p.catch(function () {});
                                         } else if (entry.intersectionRatio < 0.5 && !inst.paused) {
+                                            inst.fcWantPlay = false;
                                             try { inst.pause(); } catch (err) {}
                                         }
                                         /* 滑动自动播放/暂停后主动重估蒙版：不依赖 play/pause

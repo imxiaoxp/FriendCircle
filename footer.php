@@ -97,6 +97,7 @@ $_fcReloadLines = array_values(array_filter(array_map('trim', preg_split('/\r\n|
 }));
 ?>
 <script>window.fcPjaxReloadLines = <?php echo json_encode($_fcReloadLines, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG); ?>;</script>
+<script>window.fcThemeUrl = <?php echo json_encode(rtrim($this->options->themeUrl, '/')); ?>;</script>
 <script src="<?php $this->options->themeUrl('assets/lib/aplayer.min.js'); ?>?v=<?php echo filemtime(__DIR__ . '/assets/lib/aplayer.min.js'); ?>"></script>
 <script src="<?php $this->options->themeUrl('assets/lib/artplayer.min.js'); ?>?v=<?php echo filemtime(__DIR__ . '/assets/lib/artplayer.min.js'); ?>"></script>
 <script src="<?php $this->options->themeUrl('assets/lib/md5.min.js'); ?>?v=<?php echo filemtime(__DIR__ . '/assets/lib/md5.min.js'); ?>"></script>

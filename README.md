@@ -16,6 +16,7 @@
 - **原生音/视频短代码**：内置 APlayer 与 ArtPlayer，无需安装播放器插件——编辑器一键插入或手写短代码：
   - 音乐：直链属性式 `[Music title="歌名" author="歌手" url="音频地址" pic="封面" lrc="歌词"/]`；Meting JSON `[Music {"name":"歌名","url":"音频地址","pic":"封面"}/]`；Meting API 链接 `[Music]https://api.injahow.cn/meting/?type=playlist&id=歌单ID[/Music]`（单曲 / 歌单自动识别，前端实时解析）；兼容 `[Meting]` 包裹格式
   - 视频：`[play]视频地址[/play]`，多个地址每行一个——一个播放器 + 分集切换按钮；每行可写成 `标题|地址`（或 `地址|标题`）自定义分集标题，不写则显示序号；竖屏视频按宽高比自适应（最大高度 300px）；兼容旧格式 `[Video url="视频地址" pic="封面"/]`
+  - 支持 m3u8（HLS）视频，含代理包裹的地址（如 `https://代理域名/hls/https://源站/…/index.m3u8`，以及把地址放在查询参数里的形式）；Safari/iOS 走原生 HLS，其它浏览器在页面出现 m3u8 时按需加载内置 hls.js（`assets/lib/hls.min.js`），普通页面不额外加载；播放列表取不到时播放器会提示 HTTP 状态码而不是一直空转
   - 全局媒体互斥（任一媒体播放时其它自动暂停）与 PJAX 切页自动重载内置
 - **友情链接**：后台配置友链列表，顶栏入口弹窗展示（「联系人」风格）
 - **搜索**：悬浮按钮弹出搜索条（回车提交，走 Typecho 原生搜索归档）
@@ -92,7 +93,7 @@ FriendCircle/
 └── assets/
     ├── img/             # 主题默认图片（封面、默认头像）
     ├── ipdb/            # ip2region 数据库（ip2region.xdb / ip2region_v6.xdb，开启「插入位置按钮」后自动下载；附 .htaccess 禁止直连）
-    └── lib/             # 本地库（aplayer.min.js/css、artplayer.min.js、prism/ 代码高亮及语言组件）
+    └── lib/             # 本地库（aplayer.min.js/css、artplayer.min.js、hls.min.js（m3u8 按需加载）、prism/ 代码高亮及语言组件）
 ```
 
 ## 维护说明
