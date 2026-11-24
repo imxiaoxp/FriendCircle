@@ -349,7 +349,7 @@ class FC_Media
         row.appendChild(li);
     }
 
-    makeButton('插入音乐（APlayer）', '♫', [
+    makeButton('插入音乐（APlayer）', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>', [
         { label: 'Meting 歌曲/歌单链接（选填，如 https://api.injahow.cn/meting/?type=song&id=xxx）', required: false },
         { label: '歌曲名', required: false },
         { label: '歌手', required: false },
@@ -368,7 +368,7 @@ class FC_Media
         return tag + '/]';
     });
 
-    makeButton('插入视频（ArtPlayer）', '▶', [
+    makeButton('插入视频（ArtPlayer）', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M10 9l5 3-5 3z"></path></svg>', [
         { label: '视频文件地址（每行一个，多个将生成分集播放器；可写成「标题|地址」自定义分集标题）', required: true, multiline: true }
     ], function (v) {
         /* 统一输出 [play] 格式：单地址一个播放器，多地址自动分集 */
@@ -381,7 +381,9 @@ class FC_Media
         var li = document.createElement('li');
         li.className = 'wmd-button';
         li.title = '插入表情（OwO）';
-        li.innerHTML = '<span style="display:flex;align-items:center;justify-content:center;height:20px;font-size:14px;line-height:20px;">😀</span>';
+        li.innerHTML = '<span style="display:flex;align-items:center;justify-content:center;height:20px;">'
+            + '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>'
+            + '</span>';
         li.onclick = function () {
             if (!window.fcOwOUrl) { alert('表情数据地址不可用'); return; }
             if (li.dataset.loading) return;
