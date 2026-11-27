@@ -369,7 +369,7 @@ class FC_Media
     });
 
     makeButton('插入视频（ArtPlayer）', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M10 9l5 3-5 3z"></path></svg>', [
-        { label: '视频文件地址（每行一个，多个将生成分集播放器；可写成「标题|地址」自定义分集标题）', required: true, multiline: true }
+        { label: '视频文件地址（每行一个，多个将生成分集播放器；可写成「标题|地址」自定义分集标题；支持 m3u8 与 B 站视频页链接，B 站自动解析 1080P）', required: true, multiline: true }
     ], function (v) {
         /* 统一输出 [play] 格式：单地址一个播放器，多地址自动分集 */
         var lines = v[0].split(/\s*\n\s*/).filter(function (s) { return s; });
@@ -471,7 +471,7 @@ class FC_Media
     })();
 
     if (window.fcLocationEndpoint) {
-        makeLocationButton('插入当前位置（IP 归属地，填充「所在位置」字段）', '📍');
+        makeLocationButton('插入当前位置（IP 归属地，填充「所在位置」字段）', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>');
     }
     }
 
