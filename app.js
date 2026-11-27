@@ -1664,11 +1664,14 @@
                         fail('视频格式不支持或已失效');
                     }
                 });
-                /* 清单解析完成：列表页自动播放若在 hls 就绪前发起过，这里补一次静音起播 */
+                /* 清单解析完成：列表页自动播放若在 hls 就绪前发起过，这里补一次起播
+                   （详情页有声自动播放保持不静音） */
                 hls.on(Hls.Events.MANIFEST_PARSED, function () {
                     netTries = 0;
                     if (player.fcWantPlay && player.paused) {
-                        player.muted = true;
+                        if (!player.container.classList.contains('vc-detail')) {
+                            player.muted = true;
+                        }
                         var pp = player.play();
                         if (pp && pp.catch) pp.catch(function () {});
                     }
@@ -1686,6 +1689,89 @@
         };
         /* 有 MSE 才按需下载 hls.js；无 MSE 直接走原生，不额外请求 */
         if (window.Hls || !fcMseOk) attach(); else fcLoadHls(attach);
+    }
+
+    /* ============ DASH（mpd）播放支持 ============ */
+    /* 与 HLS 一致：统一经 Artplayer customType 接管，首次遇到才加载 dash.js；
+       本站 bili.php?action=mpd 输出的清单同时包含 1080P 画面与音轨 */
+    var fcDashQueue = null;
+    function fcLoadDash(cb) {
+        if (window.dashjs) { cb(); return; }
+        if (fcDashQueue) { fcDashQueue.push(cb); return; }
+        fcDashQueue = [cb];
+        var s = document.createElement('script');
+        s.src = (window.fcThemeUrl || '') + '/assets/lib/dash.all.min.js';
+        s.onload = function () {
+            var queue = fcDashQueue || [];
+            fcDashQueue = null;
+            queue.forEach(function (fn) { fn(); });
+        };
+        s.onerror = function () { fcDashQueue = null; };
+        document.head.appendChild(s);
+    }
+    /* 是否为 DASH：本站 B 站解析端点（action=mpd）或 .mpd 地址 */
+    function fcIsDash(url) {
+        return /[?&]action=mpd(?:[&#]|$)/i.test(String(url || ''))
+            || /\.mpd(?:[?#&]|$)/i.test(String(url || ''));
+    }
+    /* B 站视频链接 → 本站 MPD 端点（保留分 P 参数）；非 B 站地址返回空串 */
+    function fcBiliMpd(url) {
+        var s = String(url || '');
+        if (!/(?:bilibili\.com|b23\.tv)/i.test(s)) return '';
+        var p = 1;
+        var m = s.match(/[?&]p=(\d+)/);
+        if (m) p = parseInt(m[1], 10) || 1;
+        return (window.fcThemeUrl || '') + '/bili.php?action=mpd&p=' + p + '&url=' + encodeURIComponent(s);
+    }
+    /* DASH 挂载（切换来源前先重置旧实例，避免它继续往同一 video 写流） */
+    function fcAttachDash(video, src, player) {
+        if (player.fcDash) {
+            try { player.fcDash.reset(); } catch (e) {}
+            player.fcDash = null;
+        }
+        var fail = function (notice) {
+            if (player.fcDash) {
+                try { player.fcDash.reset(); } catch (e) {}
+                player.fcDash = null;
+            }
+            if (notice) { try { player.notice.show = notice; } catch (e) {} }
+        };
+        var attach = function (url) {
+            var dashjs = window.dashjs;
+            if (!dashjs) { fail('播放组件加载失败'); return; }
+            var dp = dashjs.MediaPlayer().create();
+            player.fcDash = dp;
+            dp.on('error', function () { fail('视频地址无法访问或已失效'); });
+            /* 清单就绪前的起播（列表页自动播放/切集）会失败，这里按意图补一次起播
+               （详情页有声自动播放保持不静音） */
+            dp.on('canPlay', function () {
+                if (player.fcWantPlay && player.paused) {
+                    if (!player.container.classList.contains('vc-detail')) {
+                        player.muted = true;
+                    }
+                    var pp = player.play();
+                    if (pp && pp.catch) pp.catch(function () {});
+                }
+            });
+            try {
+                dp.initialize(video, url, false);
+            } catch (e) { fail('视频格式不支持'); return; }
+            /* 长视频加大缓冲，提前拉取后续分片 */
+            try {
+                dp.updateSettings({
+                    streaming: {
+                        buffering: {
+                            stableBufferTime: 60,
+                            bufferTimeAtTopQuality: 90,
+                            bufferTimeAtTopQualityLongForm: 180,
+                            longFormContentDurationThreshold: 600
+                        }
+                    }
+                });
+            } catch (e) {}
+        };
+        if (!fcMseOk) { fail('当前浏览器不支持 DASH 播放'); return; }
+        if (window.dashjs) attach(src); else fcLoadDash(function () { attach(src); });
     }
 
     function fcInitMedia() {
@@ -1771,23 +1857,29 @@
                     var tabs = box ? box.querySelectorAll('.video-tab') : [];
                     var urls = (el.dataset.urls || el.dataset.url || '')
                         .split('\n').map(function (s) { return s.trim(); })
-                        .filter(function (s) { return s !== ''; });
+                        .filter(function (s) { return s !== ''; })
+                        /* B 站视频链接统一转本站 MPD 端点（1080P 音视频），其余地址原样保留 */
+                        .map(function (s) { return fcBiliMpd(s) || s; });
                     var switchTab = null;
                     if (urls.length > 1) {
                         switchTab = function (index) {
                             if (!urls[index] || index === el.fcTabIndex) return;
                             el.fcTabIndex = index;
                             tabs.forEach(function (t, i) { t.classList.toggle('active', i === index); });
-                            /* 切集前销毁旧 hls 实例：否则切到普通地址后它仍往同一 video 写分片 */
+                            /* 切集前销毁旧实例：否则切到普通地址后它仍往同一 video 写分片 */
                             if (art.fcHls) {
                                 try { art.fcHls.destroy(); } catch (e) {}
                                 art.fcHls = null;
                             }
-                            /* 逐集声明类型：m3u8 走 HLS，普通地址清空按扩展名处理 */
-                            art.option.type = fcIsHls(urls[index]) ? 'm3u8' : '';
+                            if (art.fcDash) {
+                                try { art.fcDash.reset(); } catch (e) {}
+                                art.fcDash = null;
+                            }
+                            /* 逐集声明类型：m3u8 走 HLS、mpd 走 DASH，普通地址清空按扩展名处理 */
+                            art.option.type = fcIsDash(urls[index]) ? 'mpd' : (fcIsHls(urls[index]) ? 'm3u8' : '');
                             art.switchUrl(urls[index]);
                             /* 切换分集后自动播放新分集（被浏览器策略拦截则停在首帧）；
-                               m3u8 需等清单解析，置起播意图由 MANIFEST_PARSED 补播 */
+                               m3u8 / mpd 需等清单解析，置起播意图后由就绪回调补播 */
                             art.fcWantPlay = true;
                             var sp = art.play();
                             if (sp && sp.catch) sp.catch(function () {});
@@ -1822,12 +1914,12 @@
                     var art = new Artplayer({
                         container: el,
                         url: firstSrc,
-                        /* m3u8 显式声明类型：查询参数包裹的地址扩展名不是 m3u8，
+                        /* 显式声明类型：查询参数包裹的地址扩展名不是 m3u8 / mpd，
                            必须由这里指定才会走 customType；普通地址留空按扩展名自动判定 */
-                        type: fcIsHls(firstSrc) ? 'm3u8' : '',
+                        type: fcIsDash(firstSrc) ? 'mpd' : (fcIsHls(firstSrc) ? 'm3u8' : ''),
                         poster: el.dataset.pic || '',
-                        /* m3u8 统一由 customType 接管：处理器内部按 MSE 能力选 hls.js 或原生 */
-                        customType: { m3u8: fcAttachHls },
+                        /* m3u8 / mpd 统一由 customType 接管：处理器内部按 MSE 能力选引擎 */
+                        customType: { m3u8: fcAttachHls, mpd: fcAttachDash },
                         setting: true,
                         playbackRate: true,
                         fullscreen: true,
@@ -2023,8 +2115,10 @@
                            其余等用户手动点播 */
                         if (window.fcVideoAuto && document.querySelector('.fc-video') === el) {
                             /* 进页面自动播放一次（有声），被浏览器策略拦截则停在首帧。
-                               之后播放/暂停完全由用户与吸顶逻辑控制，不随滚动自动启停 */
+                               之后播放/暂停完全由用户与吸顶逻辑控制，不随滚动自动启停；
+                               m3u8 / mpd 需等清单就绪，置起播意图由就绪回调补播 */
                             art.on('ready', function () {
+                                art.fcWantPlay = true;
                                 var p = art.play();
                                 if (p && p.catch) p.catch(function () {});
                             });

@@ -5,14 +5,14 @@
  *
  * @package FriendCircle
  * @author Xiao
- * @version 1.1.5
+ * @version 1.1.6
  * @link https://xiao.cn.mt
  */
 if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 
 /* 主题版本号：控制台横幅显示，与 index.php 头注释 @version 保持一致 */
 if (!defined('FC_VERSION')) {
-    define('FC_VERSION', '1.1.5');
+    define('FC_VERSION', '1.1.6');
 }
 
 // 评论渲染与查询函数集（fcCommentToken / fcInlineCommentsHtml / fcInlineCommentForm 等）
@@ -114,7 +114,7 @@ function themeConfig($form)
         ),
         '0',
         _t('插入位置按钮'),
-        _t('开启后文章编辑器工具栏显示「📍 插入位置」按钮，点击把编辑者 IP 归属地（如 江西·赣州）填入「所在位置」字段；首次开启自动下载 ip2region 数据库到主题 assets/ipdb/ 目录（IPv4 约 11MB + IPv6 约 37MB，境内外多源自动切换）')
+        _t('开启后文章编辑器工具栏显示「插入位置」按钮，点击把编辑者 IP 归属地（如 江西·赣州）填入「所在位置」字段；首次开启自动下载 ip2region 数据库到主题 assets/ipdb/ 目录（IPv4 约 11MB + IPv6 约 37MB，境内外多源自动切换）')
     ));
 
     /* 数据库下载不放在保存流程里：下载耗时可达数分钟，PHP max_execution_time（默认 30s）
@@ -129,6 +129,14 @@ function themeConfig($form)
         '1',
         _t('视频自动播放'),
         _t('默认开启：可视范围内的视频自动静音播放，滚出可视范围自动暂停。关闭后点击播放器静音播放（一次性蒙版）。播放中点击播放器进入灯箱（有声、带原生控件），关闭灯箱后回到容器继续静音播放')
+    ));
+
+    $form->addInput(new Typecho_Widget_Helper_Form_Element_Textarea(
+        'fcBiliCookie',
+        null,
+        '',
+        _t('B 站解析 Cookie'),
+        _t('插入 B 站视频（[play] 填 bilibili.com/video/BV… 或 b23.tv 短链）时由主题解析为 1080P 音视频播放。需登录 B 站后复制 Cookie：SESSDATA 必须填「已 URL 编码」的原始值（形如 xxx%2Cxxx，浏览器开发者工具里看到的那种）；也可带上 bili_jct、DedeUserID、buvid3。未配置时只能播放低清晰度')
     ));
 
     $form->addInput(new Typecho_Widget_Helper_Form_Element_Textarea(
