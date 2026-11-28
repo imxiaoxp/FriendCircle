@@ -4,7 +4,8 @@
  * FriendCircle B 站视频解析（DASH）
  *
  * GET /usr/themes/FriendCircle/bili.php?action=mpd&url=<B站视频链接>&p=1
- *     输出 DASH 清单（1080P 画面轨，优先 AV1 + 音频轨），前端由 dash.js 播放。
+ *     输出 DASH 清单（1080P 画面轨 + 音频轨），前端由 dash.js 播放。
+ *     国外服务器优先选 AV1（与官网一致），国内服务器保持 AVC 优先。
  *     清单内 BaseURL 直接写 B 站 CDN 地址，媒体分片由访客浏览器直连，
  *     本端点只返回几 KB 的清单，不代理任何媒体流量。
  *
@@ -85,6 +86,22 @@ function fcBiliJson($url, $cookie)
     return is_array($data) ? $data : null;
 }
 
+/** 服务器出口是否在国外：B 站按调用方 IP 返回归属地。结果缓存 5 分钟，
+    查询失败时按国内处理（保持 AVC 优先） */
+function fcBiliOverseas($cookie)
+{
+    $hit = fcBiliCacheGet('zone');
+    if (null !== $hit) {
+        return !empty($hit['overseas']);
+    }
+    $data = fcBiliJson('https://api.bilibili.com/x/web-interface/zone', $cookie);
+    $country = (string) ($data['data']['country'] ?? '');
+    /* 仅「中国」按国内处理；中国香港/澳门/台湾及境外均按国外，优先 AV1 */
+    $overseas = ('' !== $country && '中国' !== $country);
+    fcBiliCacheSet('zone', array('overseas' => $overseas));
+    return $overseas;
+}
+
 /** 从链接或 BV 号解析 bvid（b23.tv 短链跟随跳转后取） */
 function fcBiliBvid($input, $cookie)
 {
@@ -118,8 +135,9 @@ function fcBiliTrackOk($t)
         && !empty($t['SegmentBase']['Initialization']) && !empty($t['SegmentBase']['indexRange']);
 }
 
-/** 优先 1080P AV1（与官网默认源一致），其次 1080P AVC，最后取最高画质 */
-function fcBiliPickVideo($list)
+/** 选轨：国外环境优先 1080P AV1（与官网默认源一致，规避 AVC 文件残缺），
+    国内环境维持 1080P AVC 优先；都没有时取最高分辨率 */
+function fcBiliPickVideo($list, $preferAv1)
 {
     $all = array();
     foreach ((array) $list as $t) {
@@ -138,7 +156,7 @@ function fcBiliPickVideo($list)
         }
         return null;
     };
-    foreach (array(13, 7) as $codecid) {
+    foreach ($preferAv1 ? array(13, 7) : array(7, 13) as $codecid) {
         $t = $byCodec(1080, $codecid);
         if (null !== $t) {
             return $t;
@@ -217,7 +235,7 @@ function fcBiliStream($bvid, $cid, $cookie)
     if (!is_array($dash)) {
         throw new Exception('未获取到 DASH 流，1080P 需要在主题设置中配置「B 站解析 Cookie」');
     }
-    $video = fcBiliPickVideo($dash['video'] ?? array());
+    $video = fcBiliPickVideo($dash['video'] ?? array(), fcBiliOverseas($cookie));
     $audio = fcBiliPickAudio($dash['audio'] ?? array());
     if (!$video || !$audio) {
         throw new Exception('DASH 流缺少视频或音频轨道');
