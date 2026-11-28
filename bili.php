@@ -248,7 +248,10 @@ function fcBiliStream($bvid, $cid, $cookie)
     $stream = array(
         'video' => $video,
         'audio' => $audio,
-        'duration' => $duration
+        'duration' => $duration,
+        /* 完整轨道列表：首选轨道无免 Referer 节点时按分辨率降级用 */
+        'videos' => $dash['video'] ?? array(),
+        'audios' => $dash['audio'] ?? array()
     );
     fcBiliCacheSet($key, $stream);
     return $stream;
@@ -367,6 +370,40 @@ function fcBiliDirectUrls($track, $probe)
     return array();
 }
 
+/** 选可直连轨道：优先指定轨道；该轨道没有免 Referer 可用节点时，按分辨率从高到低
+    回退，保证降分辨率时拿到的仍是 noRef=206 的地址。全部不可直连时保留首选轨道的
+    原始候选，交给 dash.js 自行尝试 */
+function fcBiliPickTrack($tracks, $preferred)
+{
+    $rest = array();
+    foreach ((array) $tracks as $t) {
+        if (fcBiliTrackOk($t) && $t !== $preferred) {
+            $rest[] = $t;
+        }
+    }
+    usort($rest, function ($a, $b) {
+        $d = (int) ($b['height'] ?? 0) - (int) ($a['height'] ?? 0);
+        return 0 !== $d ? $d : (int) ($b['id'] ?? 0) - (int) ($a['id'] ?? 0);
+    });
+
+    foreach (array_merge(array($preferred), $rest) as $t) {
+        $urls = fcBiliCandidates($t);
+        $need = array();
+        foreach ($urls as $u) {
+            if (false === strpos($u, 'mcdn.bilivideo.cn')) {
+                $need[] = $u;
+            }
+        }
+        $probe = !empty($need) ? fcBiliProbeMany($need, 6) : array();
+        $direct = fcBiliDirectUrls($t, $probe);
+        if (!empty($direct)) {
+            return array($t, $direct);
+        }
+    }
+
+    return array($preferred, fcBiliCandidates($preferred));
+}
+
 /** 输出 DASH 清单：BaseURL 直接用 B 站 CDN 地址，媒体流量不经过本站 */
 function fcBiliServeMpd($cookie)
 {
@@ -405,8 +442,9 @@ function fcBiliServeMpd($cookie)
         exit($e->getMessage());
     }
 
-    $v = $stream['video'];
-    $a = $stream['audio'];
+    /* 优先用首选轨道；它没有免 Referer 节点时按分辨率降级，仍要求 noRef=206 */
+    list($v, $vUrls) = fcBiliPickTrack($stream['videos'] ?? array($stream['video']), $stream['video']);
+    list($a, $aUrls) = fcBiliPickTrack($stream['audios'] ?? array($stream['audio']), $stream['audio']);
     $durText = 'PT' . number_format(max(0.001, (float) $stream['duration']), 3, '.', '') . 'S';
 
     $segmentBase = function ($track) {
@@ -416,8 +454,7 @@ function fcBiliServeMpd($cookie)
             . '</SegmentBase>';
     };
 
-    /* 清单里直接写 B 站 CDN 地址，媒体流量由访客浏览器直连，不经过本站；
-       只有 mcdn 节点天然免 Referer，其余节点先并行探测再决定是否写入 */
+    /* 清单里直接写 B 站 CDN 地址，媒体流量由访客浏览器直连，不经过本站 */
     $baseUrlsXml = function ($urls) {
         $xml = '';
         foreach ($urls as $u) {
@@ -425,32 +462,6 @@ function fcBiliServeMpd($cookie)
         }
         return $xml;
     };
-
-    $needProbe = array();
-    foreach (array($v, $a) as $track) {
-        $hasMcdn = false;
-        foreach (fcBiliCandidates($track) as $u) {
-            if (false !== strpos($u, 'mcdn.bilivideo.cn')) {
-                $hasMcdn = true;
-                break;
-            }
-        }
-        if (!$hasMcdn) {
-            $needProbe = array_merge($needProbe, fcBiliCandidates($track));
-        }
-    }
-    $needProbe = array_values(array_unique($needProbe));
-    $probe = !empty($needProbe) ? fcBiliProbeMany($needProbe, 6) : array();
-
-    $vUrls = fcBiliDirectUrls($v, $probe);
-    $aUrls = fcBiliDirectUrls($a, $probe);
-    /* 探测全部失败时退回原始候选：服务端探测受网络影响，浏览器侧可能仍可用 */
-    if (empty($vUrls)) {
-        $vUrls = fcBiliCandidates($v);
-    }
-    if (empty($aUrls)) {
-        $aUrls = fcBiliCandidates($a);
-    }
 
     $videoRate = !empty($v['frameRate']) ? ' frameRate="' . fcBiliXmlEsc($v['frameRate']) . '"' : '';
 
