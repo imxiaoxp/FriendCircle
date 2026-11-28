@@ -253,16 +253,13 @@ function fcBiliStream($bvid, $cid, $cookie)
     $stream = array(
         'video' => $video,
         'audio' => $audio,
-        'duration' => $duration,
-        /* 预检后的地址顺序：首个为实测可直连的主机 */
-        'vUrls' => fcBiliPrioritize($video),
-        'aUrls' => fcBiliPrioritize($audio)
+        'duration' => $duration
     );
     fcBiliCacheSet($key, $stream);
     return $stream;
 }
 
-/** 轨道候选地址：mcdn 节点对第三方直连放行（实测 206），upos 镜像与 mountaintoys 常 403，故 mcdn 优先 */
+/** 轨道候选地址：仅保留 mcdn 节点（唯一免 Referer 可直连），以减少清单体积 */
 function fcBiliCandidates($track)
 {
     $all = array((string) $track['baseUrl']);
@@ -273,60 +270,14 @@ function fcBiliCandidates($track)
             }
         }
     }
-    $rank = function ($u) {
-        return false !== strpos($u, 'mcdn.bilivideo.cn') ? 0 : 1;
-    };
-    usort($all, function ($a, $b) use ($rank) {
-        return $rank($a) - $rank($b);
-    });
-    return array_values(array_unique($all));
-}
-
-/** 探测地址能否直连：Range 取 2 字节，收到首块即中止，避免节点忽略 Range 时整文件下载 */
-function fcBiliProbe($url)
-{
-    $status = 0;
-    $ch = curl_init($url);
-    if (false === $ch) {
-        return false;
-    }
-    curl_setopt_array($ch, array(
-        /* 与浏览器直连一致：不带 Referer（页面 referrer=same-origin，跨域请求无 Referer） */
-        CURLOPT_HTTPHEADER => array(
-            'User-Agent: ' . FC_BILI_UA,
-            'Range: bytes=0-1'
-        ),
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_MAXREDIRS => 3,
-        CURLOPT_CONNECTTIMEOUT => 6,
-        CURLOPT_TIMEOUT => 8,
-        CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$status) {
-            if (0 === stripos($line, 'HTTP/')) {
-                $status = preg_match('#^HTTP/\S+\s+(\d{3})#i', $line, $m) ? (int) $m[1] : 0;
-            }
-            return strlen($line);
-        },
-        CURLOPT_WRITEFUNCTION => function ($ch, $data) {
-            return 0;
-        }
-    ));
-    curl_exec($ch);
-    curl_close($ch);
-    return $status >= 200 && $status < 400;
-}
-
-/** 服务器侧预检：把首个可访问的地址排到最前（避免拿 403 节点当首选） */
-function fcBiliPrioritize($track)
-{
-    $list = fcBiliCandidates($track);
-    foreach ($list as $i => $url) {
-        if (fcBiliProbe($url)) {
-            unset($list[$i]);
-            array_unshift($list, $url);
-            break;
+    $mcdn = array();
+    foreach ($all as $u) {
+        if (false !== strpos($u, 'mcdn.bilivideo.cn')) {
+            $mcdn[] = $u;
         }
     }
-    return array_values($list);
+    /* 没有 mcdn 节点时退回主地址：直连大概率 403，但保留可比空清单给出更明确的失败提示 */
+    return !empty($mcdn) ? array_values(array_unique($mcdn)) : array((string) $track['baseUrl']);
 }
 
 /** 输出 DASH 清单：BaseURL 直接用 B 站 CDN 地址，媒体流量不经过本站 */
@@ -387,8 +338,8 @@ function fcBiliServeMpd($cookie)
         return $xml;
     };
 
-    $vUrls = !empty($stream['vUrls']) ? $stream['vUrls'] : fcBiliCandidates($v);
-    $aUrls = !empty($stream['aUrls']) ? $stream['aUrls'] : fcBiliCandidates($a);
+    $vUrls = fcBiliCandidates($v);
+    $aUrls = fcBiliCandidates($a);
 
     $videoRate = !empty($v['frameRate']) ? ' frameRate="' . fcBiliXmlEsc($v['frameRate']) . '"' : '';
 
