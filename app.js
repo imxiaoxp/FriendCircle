@@ -1741,7 +1741,14 @@
             if (!dashjs) { fail('播放组件加载失败'); return; }
             var dp = dashjs.MediaPlayer().create();
             player.fcDash = dp;
-            dp.on('error', function () { fail('视频地址无法访问或已失效'); });
+            dp.on('error', function (e) {
+                /* 输出具体错误码，便于区分是清单、分片还是解码问题 */
+                try {
+                    var de = (e && e.error) || {};
+                    console.error('[fc-dash]', de.code, de.message, de);
+                } catch (er) {}
+                fail('视频地址无法访问或已失效');
+            });
             /* 清单就绪前的起播（列表页自动播放/切集）会失败，这里按意图补一次起播
                （详情页有声自动播放保持不静音） */
             dp.on('canPlay', function () {
@@ -1756,11 +1763,11 @@
             try {
                 dp.initialize(video, url, false);
             } catch (e) { fail('视频格式不支持'); return; }
-            /* 长视频加大缓冲，提前拉取后续分片 */
+            /* 长视频加大缓冲，提前拉取后续分片（dash.js v5 的节点名是 buffer，不是 buffering） */
             try {
                 dp.updateSettings({
                     streaming: {
-                        buffering: {
+                        buffer: {
                             stableBufferTime: 60,
                             bufferTimeAtTopQuality: 90,
                             bufferTimeAtTopQualityLongForm: 180,

@@ -1,15 +1,19 @@
-<?php
+﻿<?php
 
 /**
  * FriendCircle B 站视频解析（DASH）
  *
  * GET /usr/themes/FriendCircle/bili.php?action=mpd&url=<B站视频链接>&p=1
- *     输出 DASH 清单（1080P 画面轨 + 音频轨），前端由 dash.js 播放。
+ *     输出 DASH 清单（1080P 画面轨，优先 AV1 + 音频轨），前端由 dash.js 播放。
  *     清单内 BaseURL 直接写 B 站 CDN 地址，媒体分片由访客浏览器直连，
  *     本端点只返回几 KB 的清单，不代理任何媒体流量。
  *
  * 1080P 需要主题设置「B 站解析 Cookie」（SESSDATA 为已 URL 编码的原始值）；
  * 未配置时 B 站只返回低清晰度 DASH。playurl 结果缓存 5 分钟到系统临时目录。
+ *
+ * 节点选择：mcdn 节点天然免 Referer 直连，优先写入清单；没有 mcdn 时
+ * （海外服务器常见 akamaized 等境外节点）服务端并行探测各节点，仅保留免 Referer
+ * 可拿到数据的地址，全部不可用则返回 502 纯文本提示。
  */
 
 $config = dirname(dirname(dirname(__DIR__))) . '/config.inc.php';
@@ -33,8 +37,8 @@ function fcBiliCookie()
     }
 }
 
-/** 带 B 站请求头的 GET，返回 status/headers/body/url/error */
-function fcBiliGet($url, $cookie, $timeout, $range)
+/** 带 B 站请求头的 GET，返回 body/url/error */
+function fcBiliGet($url, $cookie, $timeout)
 {
     $headers = array(
         'User-Agent: ' . FC_BILI_UA,
@@ -45,14 +49,10 @@ function fcBiliGet($url, $cookie, $timeout, $range)
     if ('' !== $cookie) {
         $headers[] = 'Cookie: ' . $cookie;
     }
-    if ('' !== $range) {
-        $headers[] = 'Range: ' . $range;
-    }
 
-    $hdrs = array();
     $ch = curl_init();
     if (false === $ch) {
-        return array('status' => 0, 'headers' => array(), 'body' => '', 'url' => $url, 'error' => 'curl 不可用');
+        return array('body' => '', 'url' => $url, 'error' => 'curl 不可用');
     }
     curl_setopt_array($ch, array(
         CURLOPT_URL => $url,
@@ -61,28 +61,14 @@ function fcBiliGet($url, $cookie, $timeout, $range)
         CURLOPT_MAXREDIRS => 5,
         CURLOPT_CONNECTTIMEOUT => 10,
         CURLOPT_TIMEOUT => $timeout,
-        CURLOPT_HTTPHEADER => $headers,
-        CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$hdrs) {
-            if (0 === stripos($line, 'HTTP/')) {
-                $hdrs = array();
-            } else {
-                $pos = strpos($line, ':');
-                if (false !== $pos) {
-                    $hdrs[strtolower(trim(substr($line, 0, $pos)))] = trim(substr($line, $pos + 1));
-                }
-            }
-            return strlen($line);
-        }
+        CURLOPT_HTTPHEADER => $headers
     ));
     $body = curl_exec($ch);
-    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $effective = (string) curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
     $error = curl_error($ch);
     curl_close($ch);
 
     return array(
-        'status' => $status,
-        'headers' => $hdrs,
         'body' => is_string($body) ? $body : '',
         'url' => $effective,
         'error' => $error
@@ -91,7 +77,7 @@ function fcBiliGet($url, $cookie, $timeout, $range)
 
 function fcBiliJson($url, $cookie)
 {
-    $r = fcBiliGet($url, $cookie, 15, '');
+    $r = fcBiliGet($url, $cookie, 15);
     if ('' !== $r['error']) {
         return null;
     }
@@ -113,7 +99,7 @@ function fcBiliBvid($input, $cookie)
         return $m[1];
     }
     if (preg_match('#^https?://b23\.tv/#i', $s)) {
-        $r = fcBiliGet($s, $cookie, 15, '');
+        $r = fcBiliGet($s, $cookie, 15);
         if (preg_match('#/video/(BV[0-9A-Za-z]+)#i', $r['url'], $m)) {
             return $m[1];
         }
@@ -132,7 +118,7 @@ function fcBiliTrackOk($t)
         && !empty($t['SegmentBase']['Initialization']) && !empty($t['SegmentBase']['indexRange']);
 }
 
-/** 优先 1080P（id=80）AVC，其次 1080P 任意编码，最后取最高画质 AVC */
+/** 优先 1080P AV1（与官网默认源一致），其次 1080P AVC，最后取最高画质 */
 function fcBiliPickVideo($list)
 {
     $all = array();
@@ -144,34 +130,25 @@ function fcBiliPickVideo($list)
     if (empty($all)) {
         return null;
     }
-    $preferAvc = function ($arr) {
-        foreach ($arr as $v) {
-            if (7 === (int) ($v['codecid'] ?? 0)) {
+    $byCodec = function ($minHeight, $codecid) use ($all) {
+        foreach ($all as $v) {
+            if ((int) ($v['height'] ?? 0) >= $minHeight && $codecid === (int) ($v['codecid'] ?? 0)) {
                 return $v;
             }
         }
-        return $arr[0];
+        return null;
     };
-    $q1080 = array();
-    foreach ($all as $v) {
-        if (80 === (int) ($v['id'] ?? 0)) {
-            $q1080[] = $v;
+    foreach (array(13, 7) as $codecid) {
+        $t = $byCodec(1080, $codecid);
+        if (null !== $t) {
+            return $t;
         }
     }
-    if (!empty($q1080)) {
-        return $preferAvc($q1080);
-    }
-    $avc = array();
-    foreach ($all as $v) {
-        if (7 === (int) ($v['codecid'] ?? 0)) {
-            $avc[] = $v;
-        }
-    }
-    $pool = !empty($avc) ? $avc : $all;
-    usort($pool, function ($a, $b) {
-        return (int) ($b['id'] ?? 0) - (int) ($a['id'] ?? 0);
+    usort($all, function ($a, $b) {
+        $d = (int) ($b['height'] ?? 0) - (int) ($a['height'] ?? 0);
+        return 0 !== $d ? $d : (int) ($b['id'] ?? 0) - (int) ($a['id'] ?? 0);
     });
-    return $pool[0];
+    return $all[0];
 }
 
 /** 音轨：优先 AAC，取码率最高的一条 */
@@ -259,7 +236,7 @@ function fcBiliStream($bvid, $cid, $cookie)
     return $stream;
 }
 
-/** 轨道候选地址：仅保留 mcdn 节点（唯一免 Referer 可直连），以减少清单体积 */
+/** 轨道全部候选地址（主地址 + 备用地址，去重） */
 function fcBiliCandidates($track)
 {
     $all = array((string) $track['baseUrl']);
@@ -270,14 +247,106 @@ function fcBiliCandidates($track)
             }
         }
     }
-    $mcdn = array();
-    foreach ($all as $u) {
-        if (false !== strpos($u, 'mcdn.bilivideo.cn')) {
-            $mcdn[] = $u;
+    return array_values(array_unique($all));
+}
+
+/** 并行免 Referer 探测一批地址：返回 [地址 => 是否可直连]
+    只取 2 字节即中断，节点忽略 Range 返回整文件时判为不可用（避免浏览器下载大文件） */
+function fcBiliProbeMany($urls, $timeout)
+{
+    $result = array();
+    $pending = array();
+    foreach ($urls as $u) {
+        $hit = fcBiliCacheGet('probe:' . $u);
+        if (null !== $hit) {
+            $result[$u] = !empty($hit['ok']);
+        } else {
+            $pending[] = $u;
         }
     }
-    /* 没有 mcdn 节点时退回主地址：直连大概率 403，但保留可比空清单给出更明确的失败提示 */
-    return !empty($mcdn) ? array_values(array_unique($mcdn)) : array((string) $track['baseUrl']);
+    if (empty($pending)) {
+        return $result;
+    }
+
+    $mh = curl_multi_init();
+    $handles = array();
+    foreach ($pending as $u) {
+        $ch = curl_init();
+        if (false === $ch) {
+            $result[$u] = false;
+            continue;
+        }
+        curl_setopt_array($ch, array(
+            CURLOPT_URL => $u,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 3,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => $timeout,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => 0,
+            /* 不带 Referer：浏览器无法伪造 B 站 Referer，这里模拟访客的真实请求 */
+            CURLOPT_HTTPHEADER => array(
+                'User-Agent: ' . FC_BILI_UA,
+                'Accept: */*',
+                'Range: bytes=0-1'
+            ),
+            /* 收到首块数据立即中断 */
+            CURLOPT_WRITEFUNCTION => function () {
+                return 0;
+            }
+        ));
+        curl_multi_add_handle($mh, $ch);
+        $handles[$u] = $ch;
+    }
+
+    $running = 0;
+    do {
+        $status = curl_multi_exec($mh, $running);
+        if ($running > 0) {
+            curl_multi_select($mh, 0.2);
+        }
+    } while ($running > 0 && CURLM_OK === $status);
+
+    foreach ($handles as $u => $ch) {
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $size = (float) curl_getinfo($ch, CURLINFO_CONTENT_LENGTH_DOWNLOAD);
+        $ok = (206 === $code) || (200 === $code && $size > 0 && $size <= 4096);
+        $result[$u] = $ok;
+        /* 只缓存成功结果：失败可能是临时的（跨境波动/风控），缓存会把可用的节点误判 5 分钟 */
+        if ($ok) {
+            fcBiliCacheSet('probe:' . $u, array('ok' => true));
+        }
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+    }
+    curl_multi_close($mh);
+
+    return $result;
+}
+
+/** 轨道可用直连地址：mcdn 节点免 Referer 直连，优先使用；
+    没有 mcdn 时（海外服务器常见 akamaized 等境外节点，或国内节点池未下发 mcdn）
+    取 probe 探测通过的地址 */
+function fcBiliDirectUrls($track, $probe)
+{
+    $mcdn = array();
+    $others = array();
+    foreach (fcBiliCandidates($track) as $u) {
+        if (false !== strpos($u, 'mcdn.bilivideo.cn')) {
+            $mcdn[] = $u;
+        } else {
+            $others[] = $u;
+        }
+    }
+    if (!empty($mcdn)) {
+        return $mcdn;
+    }
+    foreach ($others as $u) {
+        if (!empty($probe[$u])) {
+            return array($u);
+        }
+    }
+    return array();
 }
 
 /** 输出 DASH 清单：BaseURL 直接用 B 站 CDN 地址，媒体流量不经过本站 */
@@ -329,7 +398,8 @@ function fcBiliServeMpd($cookie)
             . '</SegmentBase>';
     };
 
-    /* 清单里直接写 B 站 CDN 地址（含备用地址），媒体流量由访客浏览器直连，不经过本站 */
+    /* 清单里直接写 B 站 CDN 地址，媒体流量由访客浏览器直连，不经过本站；
+       只有 mcdn 节点天然免 Referer，其余节点先并行探测再决定是否写入 */
     $baseUrlsXml = function ($urls) {
         $xml = '';
         foreach ($urls as $u) {
@@ -338,8 +408,31 @@ function fcBiliServeMpd($cookie)
         return $xml;
     };
 
-    $vUrls = fcBiliCandidates($v);
-    $aUrls = fcBiliCandidates($a);
+    $needProbe = array();
+    foreach (array($v, $a) as $track) {
+        $hasMcdn = false;
+        foreach (fcBiliCandidates($track) as $u) {
+            if (false !== strpos($u, 'mcdn.bilivideo.cn')) {
+                $hasMcdn = true;
+                break;
+            }
+        }
+        if (!$hasMcdn) {
+            $needProbe = array_merge($needProbe, fcBiliCandidates($track));
+        }
+    }
+    $needProbe = array_values(array_unique($needProbe));
+    $probe = !empty($needProbe) ? fcBiliProbeMany($needProbe, 6) : array();
+
+    $vUrls = fcBiliDirectUrls($v, $probe);
+    $aUrls = fcBiliDirectUrls($a, $probe);
+    /* 探测全部失败时退回原始候选：服务端探测受网络影响，浏览器侧可能仍可用 */
+    if (empty($vUrls)) {
+        $vUrls = fcBiliCandidates($v);
+    }
+    if (empty($aUrls)) {
+        $aUrls = fcBiliCandidates($a);
+    }
 
     $videoRate = !empty($v['frameRate']) ? ' frameRate="' . fcBiliXmlEsc($v['frameRate']) . '"' : '';
 
