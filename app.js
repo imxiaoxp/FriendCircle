@@ -2,6 +2,20 @@
 (function () {
     'use strict';
 
+    /* ============ 跨域媒体 Referer 策略 ============ */
+    /* B 站 CDN 按 Referer 做防盗链：带非 B 站 Referer 时，边缘节点未缓存的
+       区间回源会被拒（表现为 ERR_CONTENT_LENGTH_MISMATCH / ERR_EMPTY_RESPONSE）。
+       确保文档策略为 same-origin，让跨域取流不带 Referer；主题页已有该 meta，
+       这里兜底独立测试页等未声明的页面 */
+    (function () {
+        var head = document.head || document.documentElement;
+        if (document.querySelector('meta[name="referrer"]')) return;
+        var meta = document.createElement('meta');
+        meta.setAttribute('name', 'referrer');
+        meta.setAttribute('content', 'same-origin');
+        head.appendChild(meta);
+    })();
+
     /* ============ 暗色模式切换 ============ */
     var themeToggle = document.getElementById('fc-theme-toggle');
     if (themeToggle) {
@@ -1729,6 +1743,11 @@
             try { player.fcDash.reset(); } catch (e) {}
             player.fcDash = null;
         }
+        var tries = 0;
+        var stallTimer = null;
+        var stableTimer = null;
+        var pendingSeek = 0;
+        var lastRecoverAt = 0;
         var fail = function (notice) {
             if (player.fcDash) {
                 try { player.fcDash.reset(); } catch (e) {}
@@ -1747,11 +1766,15 @@
                     var de = (e && e.error) || {};
                     console.error('[fc-dash]', de.code, de.message, de);
                 } catch (er) {}
-                fail('视频地址无法访问或已失效');
+                if (!recover()) { fail('视频源在 CDN 边缘暂不可用，请稍后刷新重试'); }
             });
             /* 清单就绪前的起播（列表页自动播放/切集）会失败，这里按意图补一次起播
                （详情页有声自动播放保持不静音） */
             dp.on('canPlay', function () {
+                if (pendingSeek > 0) {
+                    try { player.currentTime = pendingSeek; } catch (e) {}
+                    pendingSeek = 0;
+                }
                 if (player.fcWantPlay && player.paused) {
                     if (!player.container.classList.contains('vc-detail')) {
                         player.muted = true;
@@ -1763,10 +1786,24 @@
             try {
                 dp.initialize(video, url, false);
             } catch (e) { fail('视频格式不支持'); return; }
-            /* 长视频加大缓冲，提前拉取后续分片（dash.js v5 的节点名是 buffer，不是 buffering） */
+            /* 长视频加大缓冲，提前拉取后续分片（dash.js v5 的节点名是 buffer，不是 buffering）。
+               B 站边缘对冷分片首次回源时常直接断连，分片重试次数/间隔加长后再放弃 */
             try {
                 dp.updateSettings({
                     streaming: {
+                        fragmentRequestTimeout: 20000,
+                        retryAttempts: {
+                            MediaSegment: 6,
+                            InitializationSegment: 5,
+                            IndexSegment: 5,
+                            MPD: 5
+                        },
+                        retryIntervals: {
+                            MediaSegment: 2000,
+                            InitializationSegment: 2000,
+                            IndexSegment: 2000,
+                            MPD: 2000
+                        },
                         buffer: {
                             stableBufferTime: 60,
                             bufferTimeAtTopQuality: 90,
@@ -1776,6 +1813,67 @@
                     }
                 });
             } catch (e) {}
+        };
+        /* 卡住/分片报错时重新拉流续播：清空旧实例、跳到原进度、按原播放意图继续。
+           本站 MPD 端点额外要求新清单（fresh）并轮换轨道文件/备用节点（alt），
+           避开当前边缘节点上分片残缺的那份文件；其它 mpd 地址原样重连。
+           5 秒内重复触发（报错与卡住监听同时命中）只算一次，避免快速耗尽次数 */
+        var recover = function () {
+            if (tries >= 5 || !window.dashjs) return false;
+            var now = Date.now();
+            if (now - lastRecoverAt < 5000) return true;
+            lastRecoverAt = now;
+            tries += 1;
+            /* 能走到恢复说明卡住前确实在播（用户点播或自动播放），
+               置回起播意图，新实例就绪后自动续播 */
+            player.fcWantPlay = true;
+            var cur = 0;
+            try { cur = Number(player.currentTime) || 0; } catch (e) {}
+            pendingSeek = cur > 0 ? cur : 0;
+            if (player.fcDash) {
+                try { player.fcDash.reset(); } catch (e) {}
+                player.fcDash = null;
+            }
+            var next = src;
+            if (/[?&]action=mpd(?:[&#]|$)/i.test(src)) {
+                next += '&fresh=1&alt=' + tries + '&_r=' + now;
+            }
+            attach(next);
+            return true;
+        };
+        var clearStall = function () {
+            if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
+        };
+        /* 缓冲耗尽导致的卡住：等待超过 12 秒仍未恢复就重新拉流续播；
+           恢复后连续播放 20 秒视为稳定，重置恢复次数，便于下次再卡继续恢复。
+           注意卡住时 video.paused 仍为 false（只是等数据），不能拿它判断是否在播 */
+        var onPlaying = function () {
+            clearStall();
+            if (stableTimer) return;
+            stableTimer = setTimeout(function () {
+                stableTimer = null;
+                tries = 0;
+            }, 20000);
+        };
+        var onWaiting = function () {
+            if (stableTimer) { clearTimeout(stableTimer); stableTimer = null; }
+            if (stallTimer) return;
+            stallTimer = setTimeout(function () {
+                stallTimer = null;
+                /* 卡住时 paused 为 false；只有用户主动暂停/滚出视口才会是 true。
+                   这里不依赖 fcWantPlay（详情页用户手动点播时没有该标记） */
+                if (player.paused) return;
+                if (!recover()) { fail('视频源在 CDN 边缘暂不可用，请稍后刷新重试'); }
+            }, 12000);
+        };
+        if (player.fcDashCleanup) { player.fcDashCleanup(); }
+        player.on('video:playing', onPlaying);
+        player.on('video:waiting', onWaiting);
+        player.fcDashCleanup = function () {
+            clearStall();
+            if (stableTimer) { clearTimeout(stableTimer); stableTimer = null; }
+            try { player.off('video:playing', onPlaying); } catch (e) {}
+            try { player.off('video:waiting', onWaiting); } catch (e) {}
         };
         if (!fcMseOk) { fail('当前浏览器不支持 DASH 播放'); return; }
         if (window.dashjs) attach(src); else fcLoadDash(function () { attach(src); });

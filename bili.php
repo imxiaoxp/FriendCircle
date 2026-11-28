@@ -169,8 +169,35 @@ function fcBiliPickVideo($list, $preferAv1)
     return $all[0];
 }
 
-/** 音轨：优先 AAC，取码率最高的一条 */
-function fcBiliPickAudio($list)
+/** 卡住重连时的备用视频轨：首选轨的文件在边缘节点上分片残缺时换成另一条轨道文件
+    （不同清晰度/编码是不同文件，缓存状态互不影响），按分辨率从高到低轮换 */
+function fcBiliAltVideo($list, $preferred, $skip)
+{
+    if ($skip <= 0 || null === $preferred) {
+        return $preferred;
+    }
+    $rest = array();
+    foreach ((array) $list as $t) {
+        if (fcBiliTrackOk($t) && $t !== $preferred) {
+            $rest[] = $t;
+        }
+    }
+    if (empty($rest)) {
+        return $preferred;
+    }
+    usort($rest, function ($a, $b) {
+        $d = (int) ($b['height'] ?? 0) - (int) ($a['height'] ?? 0);
+        if (0 !== $d) {
+            return $d;
+        }
+        $bw = (int) ($b['bandwidth'] ?? 0) - (int) ($a['bandwidth'] ?? 0);
+        return 0 !== $bw ? $bw : (int) ($b['id'] ?? 0) - (int) ($a['id'] ?? 0);
+    });
+    return $rest[($skip - 1) % count($rest)];
+}
+
+/** 音轨：优先 AAC，按码率从高到低排序；$skip 用于卡住时换到另一条音轨文件 */
+function fcBiliPickAudio($list, $skip = 0)
 {
     $all = array();
     foreach ((array) $list as $t) {
@@ -191,7 +218,7 @@ function fcBiliPickAudio($list)
     usort($pool, function ($a, $b) {
         return (int) ($b['bandwidth'] ?? 0) - (int) ($a['bandwidth'] ?? 0);
     });
-    return $pool[0];
+    return $pool[$skip % count($pool)];
 }
 
 function fcBiliCacheFile($key)
@@ -214,13 +241,16 @@ function fcBiliCacheSet($key, $data)
     @file_put_contents(fcBiliCacheFile($key), json_encode($data), LOCK_EX);
 }
 
-/** playurl 解析（含缓存）：返回 video/audio/duration */
-function fcBiliStream($bvid, $cid, $cookie)
+/** playurl 解析（含缓存）：返回 video/audio/duration。
+    $fresh 为 true 时跳过缓存重新请求，用于播放卡住后换一份新签名地址 */
+function fcBiliStream($bvid, $cid, $cookie, $fresh = false)
 {
     $key = 'stream:' . $bvid . ':' . $cid;
-    $hit = fcBiliCacheGet($key);
-    if (null !== $hit) {
-        return $hit;
+    if (!$fresh) {
+        $hit = fcBiliCacheGet($key);
+        if (null !== $hit) {
+            return $hit;
+        }
     }
 
     $api = 'https://api.bilibili.com/x/player/playurl?bvid=' . rawurlencode($bvid)
@@ -273,12 +303,12 @@ function fcBiliCandidates($track)
 
 /** 并行免 Referer 探测一批地址：返回 [地址 => 是否可直连]
     只取 2 字节即中断，节点忽略 Range 返回整文件时判为不可用（避免浏览器下载大文件） */
-function fcBiliProbeMany($urls, $timeout)
+function fcBiliProbeMany($urls, $timeout, $fresh = false)
 {
     $result = array();
     $pending = array();
     foreach ($urls as $u) {
-        $hit = fcBiliCacheGet('probe:' . $u);
+        $hit = $fresh ? null : fcBiliCacheGet('probe:' . $u);
         if (null !== $hit) {
             $result[$u] = !empty($hit['ok']);
         } else {
@@ -347,8 +377,8 @@ function fcBiliProbeMany($urls, $timeout)
 
 /** 轨道可用直连地址：mcdn 节点免 Referer 直连，优先使用；
     没有 mcdn 时（海外服务器常见 akamaized 等境外节点，或国内节点池未下发 mcdn）
-    取 probe 探测通过的地址 */
-function fcBiliDirectUrls($track, $probe)
+    取 probe 探测通过的地址。$skip 用于卡住重连时轮换到下一个可用节点 */
+function fcBiliDirectUrls($track, $probe, $skip = 0)
 {
     $mcdn = array();
     $others = array();
@@ -359,21 +389,34 @@ function fcBiliDirectUrls($track, $probe)
             $others[] = $u;
         }
     }
+    /* 轮换时把目标节点排到首位，其余地址保留作为兜底候选 */
+    $rotate = function ($list, $skip) {
+        $n = count($list);
+        if ($n <= 1 || 0 === $skip % $n) {
+            return $list;
+        }
+        $i = $skip % $n;
+        return array_merge(array_slice($list, $i), array_slice($list, 0, $i));
+    };
     if (!empty($mcdn)) {
-        return $mcdn;
+        return $rotate($mcdn, $skip);
     }
+    $ok = array();
     foreach ($others as $u) {
         if (!empty($probe[$u])) {
-            return array($u);
+            $ok[] = $u;
         }
+    }
+    if (!empty($ok)) {
+        return $rotate($ok, $skip);
     }
     return array();
 }
 
 /** 选可直连轨道：优先指定轨道；该轨道没有免 Referer 可用节点时，按分辨率从高到低
     回退，保证降分辨率时拿到的仍是 noRef=206 的地址。全部不可直连时保留首选轨道的
-    原始候选，交给 dash.js 自行尝试 */
-function fcBiliPickTrack($tracks, $preferred)
+    原始候选，交给 dash.js 自行尝试。$skip 轮换节点，$fresh 跳过探测结果缓存 */
+function fcBiliPickTrack($tracks, $preferred, $skip = 0, $fresh = false)
 {
     $rest = array();
     foreach ((array) $tracks as $t) {
@@ -394,8 +437,8 @@ function fcBiliPickTrack($tracks, $preferred)
                 $need[] = $u;
             }
         }
-        $probe = !empty($need) ? fcBiliProbeMany($need, 6) : array();
-        $direct = fcBiliDirectUrls($t, $probe);
+        $probe = !empty($need) ? fcBiliProbeMany($need, 6, $fresh) : array();
+        $direct = fcBiliDirectUrls($t, $probe, $skip);
         if (!empty($direct)) {
             return array($t, $direct);
         }
@@ -424,6 +467,11 @@ function fcBiliServeMpd($cookie)
         $page = 1;
     }
 
+    /* 播放卡住后的重连参数：fresh 跳过 playurl 缓存换一份新签名地址，
+       alt 轮换音轨与备用节点，避开当前边缘节点取不到的分片区间 */
+    $fresh = !empty($_GET['fresh']);
+    $alt = isset($_GET['alt']) ? max(0, (int) $_GET['alt']) : 0;
+
     try {
         $list = fcBiliJson('https://api.bilibili.com/x/player/pagelist?bvid=' . rawurlencode($bvid), $cookie);
         $pages = isset($list['data']) && is_array($list['data']) ? $list['data'] : array();
@@ -435,16 +483,27 @@ function fcBiliServeMpd($cookie)
         if ('' === $cid) {
             throw new Exception('未找到视频分 P 信息');
         }
-        $stream = fcBiliStream($bvid, $cid, $cookie);
+        $stream = fcBiliStream($bvid, $cid, $cookie, $fresh);
     } catch (\Exception $e) {
         http_response_code(502);
         header('Content-Type: text/plain; charset=UTF-8');
         exit($e->getMessage());
     }
 
-    /* 优先用首选轨道；它没有免 Referer 节点时按分辨率降级，仍要求 noRef=206 */
-    list($v, $vUrls) = fcBiliPickTrack($stream['videos'] ?? array($stream['video']), $stream['video']);
-    list($a, $aUrls) = fcBiliPickTrack($stream['audios'] ?? array($stream['audio']), $stream['audio']);
+    /* 优先用首选轨道；它没有免 Referer 节点时按分辨率降级，仍要求 noRef=206。
+       alt 大于 0 时换一条视频/音轨文件，并轮换到下一个可用节点 */
+    $videos = $stream['videos'] ?? array($stream['video']);
+    $audios = $stream['audios'] ?? array($stream['audio']);
+    $videoPref = $alt > 0 ? fcBiliAltVideo($videos, $stream['video'], $alt) : $stream['video'];
+    $audioPref = $alt > 0 ? fcBiliPickAudio($audios, $alt) : $stream['audio'];
+    if (null === $videoPref) {
+        $videoPref = $stream['video'];
+    }
+    if (null === $audioPref) {
+        $audioPref = $stream['audio'];
+    }
+    list($v, $vUrls) = fcBiliPickTrack($videos, $videoPref, $alt, $fresh);
+    list($a, $aUrls) = fcBiliPickTrack($audios, $audioPref, $alt, $fresh);
     $durText = 'PT' . number_format(max(0.001, (float) $stream['duration']), 3, '.', '') . 'S';
 
     $segmentBase = function ($track) {
